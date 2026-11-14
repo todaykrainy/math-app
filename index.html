@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#2f6bff">
+<title>パッと算数</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;font-family:system-ui,"Hiragino Sans","Noto Sans JP",sans-serif;background:#f4f6fb;color:#1c2333;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+#app{height:100%;padding:14px 22px;display:flex;flex-direction:column}
+h1{font-size:28px;margin:0}
+h2{font-size:18px;margin:18px 0 8px;color:#4a5570}
+button{font:inherit;border:0;border-radius:14px;padding:14px 18px;background:#fff;box-shadow:0 1px 0 #cfd6e6;color:inherit;cursor:pointer}
+button.pri{background:#2f6bff;color:#fff;font-weight:700}
+button.big{font-size:24px;padding:22px}
+button.ghost{background:transparent;box-shadow:none;color:#5a6682;padding:8px 12px}
+button.chip{padding:12px 16px;font-size:18px;margin:0 8px 8px 0}
+button.chip.on{background:#2f6bff;color:#fff;font-weight:700}
+.row{display:flex;flex-wrap:wrap;align-items:center}
+.sp{flex:1}
+.stack{display:flex;flex-direction:column;gap:12px}
+.note{font-size:13px;color:#6b7691;margin:4px 0}
+.card{background:#fff;border-radius:14px;padding:12px 14px;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:14px;overflow:hidden}
+th,td{padding:10px 12px;text-align:right;border-bottom:1px solid #eef1f7;font-size:16px}
+th:first-child,td:first-child{text-align:left}
+th{background:#eef1f7;font-size:14px;color:#4a5570}
+.good{color:#1a9b4a}.bad{color:#d8362f}
+/* 横向きレイアウト */
+.rot{display:none;background:#fff3cd;padding:8px;text-align:center;font-size:15px}
+.hdr{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.hdr h1{flex:1}
+.cols3{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:18px;min-height:0;padding-bottom:6px}
+.cols3>button,.cell>button.pri{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:30px;font-weight:700;border-radius:24px}
+.cols3>button i{font-style:normal;font-size:72px;line-height:1}
+.cols3>button small{font-size:16px;font-weight:400;opacity:.85}
+.cell{display:flex;flex-direction:column;gap:6px;min-height:0}
+.cell>button.pri{flex:1}
+.center{margin:auto;width:min(520px,90%)}
+.split{flex:1;display:grid;grid-template-columns:1fr 330px;gap:22px;min-height:0}
+.split2{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:22px;min-height:0}
+.col{overflow:auto;min-height:0}
+.side{background:#fff;border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.opt{display:flex;align-items:flex-start;gap:14px;margin-bottom:8px}
+.opt h2{width:120px;margin:10px 0 0;flex:none}
+.opt .row{flex:1}
+.sample{font-size:48px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;margin:8px 0}
+.scorebig{font-size:34px}
+/* play */
+.play{flex:1;display:grid;grid-template-columns:1fr minmax(340px,38vw);grid-template-rows:auto 1fr;gap:0 24px;min-height:0}
+.top{grid-column:1/3;display:flex;align-items:center;font-size:20px;color:#5a6682}
+.main{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0}
+#q{font-size:clamp(48px,min(10vw,24vh),170px);font-weight:700;font-variant-numeric:tabular-nums;min-height:1.25em;text-align:center;line-height:1.25}
+#inp{font-size:clamp(40px,min(8vw,16vh),110px);letter-spacing:.12em;font-variant-numeric:tabular-nums;min-height:1.25em;color:#2f6bff;font-weight:700}
+#fb{height:1.8em;font-size:28px;font-weight:700}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(4,1fr);gap:10px;min-height:0;padding-bottom:4px}
+.pad button{font-size:clamp(30px,7vh,54px);padding:0;font-weight:700;border-radius:18px}
+.pad button.k2{background:#e4e9f5;font-size:clamp(24px,5vh,38px)}
+@media (orientation:portrait){
+  .rot{display:block}
+  .cols3,.split,.split2{grid-template-columns:1fr;overflow:auto}
+  .cols3{grid-auto-rows:minmax(130px,1fr)}
+  .col{overflow:visible}
+  .play{display:flex;flex-direction:column}
+  .pad{height:46vh;flex:none}
+}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1c2333;color:#fff;padding:10px 16px;border-radius:12px;font-size:15px}
+</style>
+</head>
+<body>
+<div class="rot">📱 よこ向きにして使ってね</div>
+<div id="app"></div>
+<script type="module">
+/* ====== 設定 ======
+   Firebaseを使う場合は、ここに設定オブジェクトを貼る（SETUP.md参照）。
+   null のままなら「この端末だけ」モードで動く。 */
+const FIREBASE_CONFIG = null;
+/* ================== */
+
+const $ = (s,r=document)=>r.querySelector(s);
+const esc = s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sleep = ms=>new Promise(r=>setTimeout(r,ms));
+
+/* ---- 安全なlocalStorage（使えない環境ではメモリ） ---- */
+const mem={};
+const lsGet=k=>{try{const v=localStorage.getItem(k);return v===null?null:v}catch{return mem[k]??null}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch{mem[k]=v}};
+const lsJSON=(k,d)=>{try{return JSON.parse(lsGet(k))??d}catch{return d}};
+
+//#GEN-START
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const pick=a=>a[rnd(0,a.length-1)];
+const OPS={add:'＋',sub:'−',mul:'×',div:'÷'};
+const OPN={add:'たし算',sub:'ひき算',mul:'かけ算',div:'わり算'};
+const R={
+  add:{1:[[1,9],[1,9]],2:[[10,99],[1,9]],3:[[10,99],[10,99]],4:[[100,999],[10,99]],5:[[100,999],[100,999]]},
+  mul:{1:[[1,9],[1,9]],2:[[11,30],[2,9]],3:[[10,99],[2,9]],4:[[11,30],[11,30]],5:[[10,99],[10,99]]},
+  div:{1:{q:[1,9],d:[2,9]},2:{q:[10,20],d:[2,9]},3:{q:[10,99],d:[2,9]},4:{q:[2,30],d:[11,30]},5:{q:[10,99],d:[11,30]}}
+};
+R.sub=R.add;
+function genCalc(c){
+  const op=pick(c.ops), L=c.level; let a,b,ans;
+  if(op==='div'){
+    const {q,d}=R.div[L]; const qq=rnd(...q), dd=rnd(...d);
+    a=qq*dd; b=dd; ans=qq;
+  } else {
+    const [r1,r2]=R[op][L]; a=rnd(...r1); b=rnd(...r2);
+    if(op==='add'){ if(Math.random()<.5)[a,b]=[b,a]; ans=a+b; }
+    else if(op==='sub'){ if(a<b)[a,b]=[b,a]; ans=a-b; }
+    else { if(Math.random()<.5)[a,b]=[b,a]; ans=a*b; }
+  }
+  return {op,ans,text:`${a} ${OPS[op]} ${b}`};
+}
+const DIG={1:[1,9],2:[10,99],3:[100,999]};
+function genFlash(c){
+  const nums=[]; let total=0, prev=null;
+  for(let i=0;i<c.count;i++){
+    let n,t=0; do{ n=rnd(...DIG[c.digits]); }while(n===prev && t++<5);
+    prev=n;
+    if(i===0||!c.sign){ nums.push(n); total+=n; }
+    else {
+      let neg=Math.random()<0.4; if(neg&&total-n<0) neg=false;
+      nums.push(neg?-n:n); total+=neg?-n:n;
+    }
+  }
+  return {nums,ans:total};
+}
+//#GEN-END
+
+/* ---- 状態 ---- */
+let store=null, me=null, S=null, runId=0, CFG=null;
+const DEFAULT_CFG={
+  calc:{level:2,ops:['add','sub'],n:10},
+  flash:{digits:1,count:4,ms:1000,sign:false,n:10}
+};
+const loadCfg=()=>{CFG=lsJSON('fa_cfg_'+me.id,null)||JSON.parse(JSON.stringify(DEFAULT_CFG));
+  for(const k in DEFAULT_CFG) CFG[k]={...DEFAULT_CFG[k],...CFG[k]};};
+const saveCfg=()=>lsSet('fa_cfg_'+me.id,JSON.stringify(CFG));
+const render=h=>{$('#app').innerHTML=h};
+function toast(t){const d=document.createElement('div');d.id='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),3500)}
+
+/* ---- ストア：端末内 ---- */
+function initLocal(){
+  const KEY='fa_local_v1';
+  let d=lsJSON(KEY,null);
+  if(!d||!d.profiles){d={profiles:[{id:'p1',name:'こども1'},{id:'p2',name:'こども2'}],sessions:{}};lsSet(KEY,JSON.stringify(d));}
+  const persist=()=>lsSet(KEY,JSON.stringify(d));
+  store={kind:'local',
+    profiles:()=>d.profiles,
+    rename(id,name){d.profiles.find(p=>p.id===id).name=name;persist()},
+    async save(uid,s){(d.sessions[uid]??=[]).unshift(s);d.sessions[uid]=d.sessions[uid].slice(0,300);persist()},
+    async load(uid){return (d.sessions[uid]||[]).slice(0,100)},
+    signOut(){me=null;showLogin()}
+  };
+  showLogin();
+}
+
+/* ---- ストア：Firebase ---- */
+async function initCloud(){
+  const V='10.14.1', base=`https://www.gstatic.com/firebasejs/${V}/`;
+  const [A,Au,Fs]=await Promise.all([import(base+'firebase-app.js'),import(base+'firebase-auth.js'),import(base+'firebase-firestore.js')]);
+  const app=A.initializeApp(FIREBASE_CONFIG), auth=Au.getAuth(app), db=Fs.getFirestore(app);
+  store={kind:'cloud',
+    async signIn(){
+      const p=new Au.GoogleAuthProvider(); p.setCustomParameters({prompt:'select_account'});
+      try{await Au.signInWithPopup(auth,p)}
+      catch(e){ if(e.code==='auth/popup-blocked') await Au.signInWithRedirect(auth,p); else if(e.code!=='auth/popup-closed-by-user') toast('ログインできませんでした：'+(e.code||e.message)); }
+    },
+    signOut:()=>Au.signOut(auth),
+    save:(uid,s)=>Fs.addDoc(Fs.collection(db,'users',uid,'sessions'),s),
+    async load(uid){
+      const q=Fs.query(Fs.collection(db,'users',uid,'sessions'),Fs.orderBy('ts','desc'),Fs.limit(100));
+      return (await Fs.getDocs(q)).docs.map(x=>x.data());
+    }
+  };
+  Au.onAuthStateChanged(auth,u=>{
+    me=u?{id:u.uid,name:u.displayName||u.email||'ゲスト'}:null;
+    me?goHome():showLogin();
+  });
+}
+
+/* ---- 画面 ---- */
+function showLogin(){
+  runId++; S=null;
+  if(store.kind==='cloud'){
+    render(`<div class="center stack"><h1 style="text-align:center">パッと算数</h1>
+      <button class="pri big" data-act="gLogin">Googleでログイン</button>
+      <button class="ghost" data-act="forceLocal">ログインせず この端末だけで使う</button></div>`);
+  } else {
+    render(`<div class="hdr"><h1>だれがやる？</h1>${FIREBASE_CONFIG?`<button class="ghost" data-act="useCloud">Googleログインにもどす</button>`:''}</div>
+      <div class="cols3" style="grid-template-columns:repeat(2,1fr)">
+      ${store.profiles().map(p=>`<div class="cell"><button class="pri" data-act="pickUser" data-id="${p.id}">${esc(p.name)}</button><button class="ghost" data-act="rename" data-id="${p.id}">なまえ変更</button></div>`).join('')}
+      </div><p class="note">この端末のブラウザに記録が保存されます。</p>`);
+  }
+}
+function goHome(){
+  runId++; S=null; loadCfg();
+  render(`<div class="hdr"><h1>${esc(me.name)}</h1><button class="ghost" data-act="logout">${store.kind==='cloud'?'ログアウト':'ひとを変える'}</button></div>
+    <div class="cols3">
+      <button class="pri" data-act="settings" data-m="calc"><i>⚡</i>計算ダッシュ<small>パッパッと計算</small></button>
+      <button class="pri" data-act="settings" data-m="flash"><i>👀</i>フラッシュ暗算<small>数字を見て合計</small></button>
+      <button data-act="history"><i>📊</i>きろく<small>せいせきを見る</small></button>
+    </div>`);
+}
+const chip=(m,k,v,label,on)=>`<button class="chip ${on?'on':''}" data-act="cfg" data-m="${m}" data-k="${k}" data-v="${v}">${label}</button>`;
+function showSettings(m){
+  const c=CFG[m], grp=(t,inner)=>`<div class="opt"><h2>${t}</h2><div class="row">${inner}</div></div>`;
+  let title,opts,side;
+  if(m==='calc'){
+    title='⚡ 計算ダッシュ';
+    opts=grp('レベル',[1,2,3,4,5].map(l=>chip(m,'level',l,'Lv'+l,c.level===l)).join(''))
+      +`<p class="note" style="margin:-2px 0 12px 134px">Lv1：1けた・九九 / Lv2：2けた±1けた、2けた×1けた / Lv3：2けた同士 / Lv4：3けた±2けた、2けた×2けた / Lv5：3けた同士</p>`
+      +grp('しゅるい',Object.keys(OPS).map(o=>chip(m,'ops',o,OPS[o]+' '+OPN[o],c.ops.includes(o))).join(''))
+      +grp('もんだい数',[10,20,30].map(n=>chip(m,'n',n,n+'問',c.n===n)).join(''));
+    side=`<div class="note">れい</div><div class="sample">${genCalc(c).text}</div>`;
+  } else {
+    title='👀 フラッシュ暗算';
+    opts=grp('けた数',[1,2,3].map(n=>chip(m,'digits',n,n+'けた',c.digits===n)).join(''))
+      +grp('数字の個数',[3,4,5,7,10].map(n=>chip(m,'count',n,n+'こ',c.count===n)).join(''))
+      +grp('1こを見せる時間',[1500,1000,700,500,300].map(n=>chip(m,'ms',n,(n/1000)+'秒',c.ms===n)).join(''))
+      +grp('けいさん',chip(m,'sign','false','たしのみ',!c.sign)+chip(m,'sign','true','たし＆ひき',c.sign))
+      +grp('もんだい数',[5,10].map(n=>chip(m,'n',n,n+'問',c.n===n)).join(''));
+    side=`<div class="note">せってい</div><div style="font-size:22px;text-align:center;line-height:1.7;margin:8px 0">${c.digits}けた × ${c.count}こ<br>${c.ms/1000}秒ずつ<br>${c.sign?'たし＆ひき':'たしのみ'}</div>`;
+  }
+  render(`<div class="hdr"><button class="ghost" data-act="home">← もどる</button><h1>${title}</h1></div>
+    <div class="split"><div class="col">${opts}</div>
+    <div class="side">${side}<div class="sp"></div><button class="pri big" data-act="start" data-m="${m}">スタート</button></div></div>`);
+}
+function renderPlay(){
+  render(`<div class="play">
+    <div class="top"><span id="prog"></span><span class="sp"></span><button class="ghost" data-act="home">やめる</button></div>
+    <div class="main"><div id="q"></div><div id="inp"></div><div id="fb"></div></div>
+    <div class="pad">${[7,8,9,4,5,6,1,2,3].map(n=>`<button data-key="${n}">${n}</button>`).join('')}
+      <button class="k2" data-key="back">⌫</button><button data-key="0">0</button><button class="k2" data-key="ok">OK</button></div>
+  </div>`);
+}
+const setProg=()=>{const p=$('#prog'); if(p)p.textContent=`${Math.min(S.i+1,S.cfg.n)} / ${S.cfg.n}`};
+const fmtFlash=(n,i,sign)=>i===0?String(Math.abs(n)):(sign?(n>=0?'＋':'−'):'')+Math.abs(n);
+function renderInp(){
+  const len=String(S.cur.ans).length;
+  $('#inp').textContent=S.input+'_'.repeat(Math.max(0,len-S.input.length));
+}
+
+/* ---- ゲーム進行 ---- */
+function startSession(m){
+  const cfg=JSON.parse(JSON.stringify(CFG[m]));
+  S={mode:m,cfg,i:0,res:[],accepting:false,input:'',cur:null,t0:0};
+  renderPlay(); setProg();
+  if(m==='calc') nextQ();
+  else $('#q').innerHTML='<button class="pri big" data-act="flashGo">スタート</button>';
+}
+function nextQ(){
+  if(S.i>=S.cfg.n) return finish();
+  setProg();
+  if(S.mode==='calc'){
+    S.cur=genCalc(S.cfg); $('#q').textContent=S.cur.text;
+    S.input=''; S.accepting=true; S.t0=performance.now(); renderInp();
+  } else flashSeq();
+}
+async function flashSeq(){
+  const my=++runId, c=S.cfg; S.accepting=false;
+  const g=genFlash(c); S.cur={nums:g.nums,ans:g.ans,
+    text:g.nums.map((n,i)=>(i?' ':'')+fmtFlash(n,i,c.sign)).join('')};
+  $('#inp').textContent=''; $('#q').textContent='';
+  await sleep(350); if(my!==runId)return;
+  $('#fb').textContent='';
+  for(let i=0;i<g.nums.length;i++){
+    $('#q').textContent=fmtFlash(g.nums[i],i,c.sign);
+    await sleep(c.ms); if(my!==runId)return;
+    $('#q').textContent=''; await sleep(90); if(my!==runId)return;
+  }
+  $('#q').textContent='？'; S.input=''; S.accepting=true; S.t0=performance.now(); renderInp();
+}
+function press(key){
+  if(!S||!S.accepting) return;
+  const len=String(S.cur.ans).length;
+  if(key==='back') S.input=S.input.slice(0,-1);
+  else if(key==='ok'){ if(S.input) return submit(); return; }
+  else if(S.input.length<len) S.input+=key;
+  renderInp();
+  if(S.input.length>=len) submit();
+}
+function submit(){
+  S.accepting=false;
+  const ms=Math.round(performance.now()-S.t0), ok=(+S.input===S.cur.ans);
+  const fb=$('#fb');
+  fb.className=ok?'good':'bad'; fb.textContent=ok?'✓':`✗ 正解 ${S.cur.ans}`;
+  S.res.push({o:S.mode==='calc'?S.cur.op:'f',k:ok?1:0,m:ms,q:S.cur.text,a:S.cur.ans,g:S.input});
+  S.i++;
+  if(S.mode==='calc') nextQ();
+  else setTimeout(()=>{ if(S) nextQ(); }, ok?250:1300);
+}
+function finish(){
+  runId++;
+  const n=S.res.length, correct=S.res.filter(r=>r.k).length, ms=S.res.reduce((a,r)=>a+r.m,0);
+  const sess={ts:Date.now(),mode:S.mode,cfg:S.cfg,n,correct,ms,
+    r:S.mode==='calc'?S.res.map(r=>({o:r.o,k:r.k,m:r.m})):undefined};
+  if(!sess.r) delete sess.r;
+  Promise.resolve(store.save(me.id,sess)).catch(()=>toast('きろくを保存できませんでした'));
+  const wrong=S.res.filter(r=>!r.k), m=S.mode;
+  render(`<div class="hdr"><h1>おつかれさま！</h1></div>
+    <div class="split2"><div class="col">
+      <div class="card scorebig"><b class="${correct===n?'good':''}">${correct} / ${n}</b> 正解</div>
+      ${m==='calc'?`<div class="card">1問あたり <b>${(ms/n/1000).toFixed(1)}</b> 秒</div>`:''}
+      <div class="stack" style="margin-top:14px"><button class="pri big" data-act="start" data-m="${m}">もういっかい</button>
+      <button class="big" data-act="home">ホームへ</button></div>
+    </div><div class="col">
+      ${wrong.length?`<h2 style="margin-top:0">まちがい</h2>${wrong.map(r=>`<div class="card">${esc(r.q)}${m==='calc'?' =':' → 合計'} <b>${r.a}</b>　<span class="bad">（きみ：${esc(r.g)}）</span></div>`).join('')}`:`<div class="card good scorebig">ぜんぶ正解！</div>`}
+    </div></div>`);
+}
+
+/* ---- きろく ---- */
+const fmtDate=ts=>{const d=new Date(ts),p=n=>String(n).padStart(2,'0');return `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`};
+const cfgLabel=s=>s.mode==='calc'
+  ? `計算 Lv${s.cfg.level} ${s.cfg.ops.map(o=>OPS[o]).join('')}`
+  : `フラッシュ ${s.cfg.digits}けた×${s.cfg.count}こ ${s.cfg.ms/1000}秒${s.cfg.sign?' ±':''}`;
+async function showHistory(){
+  const hdr=`<div class="hdr"><button class="ghost" data-act="home">← もどる</button><h1>📊 きろく</h1></div>`;
+  render(hdr+`<p>よみこみ中…</p>`);
+  let list=[]; try{list=await store.load(me.id)}catch(e){toast('きろくを読み込めませんでした')}
+  if(!list.length){ render(hdr+'<p>まだ記録がありません。</p>'); return; }
+  const agg={};
+  list.filter(s=>s.mode==='calc'&&s.r).forEach(s=>s.r.forEach(r=>{const a=agg[r.o]??={n:0,k:0,m:0};a.n++;a.k+=r.k;a.m+=r.m}));
+  const ops=Object.keys(agg);
+  const left=ops.length?`<h2 style="margin-top:0">計算ダッシュ：しゅるい別（直近）</h2><table><tr><th></th><th>問題数</th><th>正答率</th><th>平均秒</th></tr>
+    ${ops.map(o=>{const a=agg[o],p=Math.round(a.k/a.n*100);return `<tr><td>${OPS[o]} ${OPN[o]}</td><td>${a.n}</td><td class="${p>=90?'good':p<70?'bad':''}">${p}%</td><td>${(a.m/a.n/1000).toFixed(1)}</td></tr>`}).join('')}</table>`
+    :`<p class="note">計算ダッシュの記録がたまると、しゅるい別の成績が出ます。</p>`;
+  const right=`<h2 style="margin-top:0">さいきんの記録</h2>`+list.slice(0,30).map(s=>{
+    const p=Math.round(s.correct/s.n*100);
+    return `<div class="card row"><span style="width:92px;color:#6b7691">${fmtDate(s.ts)}</span><span class="sp">${esc(cfgLabel(s))}</span>
+      <b class="${p>=90?'good':p<70?'bad':''}" style="width:70px;text-align:right">${s.correct}/${s.n}</b>
+      <span style="width:58px;text-align:right;color:#6b7691">${s.mode==='calc'?(s.ms/s.n/1000).toFixed(1)+'秒':''}</span></div>`}).join('');
+  render(hdr+`<div class="split2"><div class="col">${left}</div><div class="col">${right}</div></div>`);
+}
+
+/* ---- イベント ---- */
+const acts={
+  gLogin:()=>store.signIn(),
+  forceLocal:()=>{lsSet('fa_force_local','1');initLocal()},
+  useCloud:()=>{lsSet('fa_force_local','0');boot()},
+  pickUser:d=>{me={id:d.id,name:store.profiles().find(p=>p.id===d.id).name};goHome()},
+  rename:d=>{const n=prompt('なまえ',store.profiles().find(p=>p.id===d.id).name);if(n&&n.trim()){store.rename(d.id,n.trim().slice(0,12));showLogin()}},
+  logout:()=>store.signOut(),
+  home:()=>goHome(),
+  settings:d=>showSettings(d.m),
+  cfg:d=>{
+    const c=CFG[d.m];
+    if(d.k==='ops'){const s=new Set(c.ops);s.has(d.v)?s.delete(d.v):s.add(d.v);if(!s.size)s.add(d.v);c.ops=[...s]}
+    else c[d.k]=d.v==='true'?true:d.v==='false'?false:+d.v;
+    saveCfg(); showSettings(d.m);
+  },
+  start:d=>startSession(d.m),
+  flashGo:()=>nextQ(),
+  history:()=>showHistory()
+};
+$('#app').addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b)acts[b.dataset.act]?.(b.dataset)});
+$('#app').addEventListener('pointerdown',e=>{const b=e.target.closest('[data-key]');if(b){e.preventDefault();press(b.dataset.key)}});
+document.addEventListener('keydown',e=>{
+  if(!S)return;
+  if(/^[0-9]$/.test(e.key)) press(e.key);
+  else if(e.key==='Backspace') press('back');
+  else if(e.key==='Enter'){ if(S.accepting) press('ok'); else if(!S.cur&&S.mode==='flash') acts.flashGo(); }
+});
+
+async function boot(){
+  if(FIREBASE_CONFIG && lsGet('fa_force_local')!=='1'){
+    try{await initCloud();return}catch(e){console.error(e);toast('オンラインに接続できないため、この端末だけのモードで開きます')}
+  }
+  initLocal();
+}
+boot();
+</script>
+</body>
+</html>
