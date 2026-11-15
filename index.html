@@ -277,6 +277,8 @@ function beep(freq,dur,vol,type='square',at=0){
     o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+dur+0.02); }catch(e){}
 }
 const tick=neg=>beep(neg?640:1100,0.07,0.16);              // 数字が出るたび「ピッ」（引く数は低め）
+const good=()=>{ beep(1040,0.07,0.14,'sine'); beep(1560,0.1,0.14,'sine',0.06); };  // 正解「ピン↑」
+const bad=()=>beep(170,0.2,0.2,'sawtooth');                                      // 不正解「ブッ」
 const chime=()=>{ beep(880,0.12,0.18,'triangle'); beep(1320,0.22,0.18,'triangle',0.11); }; // 答えを入れる合図
 const dstr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const dayDiff=(a,b)=>Math.round((Date.parse(b)-Date.parse(a))/864e5);
@@ -483,6 +485,7 @@ function lvMap(o,cur){
     return `<button class="node ${s===cur?'cur':s<cur?'past':''} ${c}" data-act="stage" data-op="${o}" data-v="${s}">${s}<i>${s===cur?'📍':c==='ok'?'⭐':c==='ng'?'！':''}</i></button>`;
   }).join('')}</div>`;
 }
+const soundGrp=m=>{const on=CFG.flash.sound!==false;return `<div class="opt"><h2>こうかおん</h2><div class="row"><button class="chip ${on?'on':''}" data-act="sound" data-m="${m}" data-v="true">ON 🔊</button><button class="chip ${on?'':'on'}" data-act="sound" data-m="${m}" data-v="false">OFF 🔇</button></div></div>`};
 function showSettings(m){
   const c=CFG[m], grp=(t,inner)=>`<div class="opt"><h2>${t}</h2><div class="row">${inner}</div></div>`;
   const autoChips=chip(m,'auto','true','おまかせ',c.auto)+chip(m,'auto','false','じぶんで決める',!c.auto);
@@ -505,6 +508,7 @@ function showSettings(m){
     }
     opts=grp('しゅるい',Object.keys(SEL).map(k=>`<button class="chip ${c.op===k?'on':''}" data-act="cfg" data-m="calc" data-k="op" data-v="${k}">${SELN[k]}</button>`).join(''))
       +lvBlock
+      +soundGrp('calc')
       +grp('おわり方',limChip('n10','10問',10,0)+limChip('n20','20問',20,0)+limChip('n30','30問',30,0)+limChip('t180','3分',0,180)+limChip('t300','5分',0,300));
     side=`<div class="note">れい</div><div class="sample">${genCalc({ops,lv}).text}</div>`
       +(multi?'':`<div class="note" style="text-align:center">Lv${lv[ops[0]]}<br>${esc(CURR[ops[0]][lv[ops[0]]-1].n)}</div>`);
@@ -518,7 +522,7 @@ function showSettings(m){
           +grp('数字の個数',[3,4,5,7,10].map(n=>chip(m,'count',n,n+'こ',c.count===n)).join(''))
           +grp('1こを見せる時間',[1500,1000,700,500,300].map(n=>chip(m,'ms',n,(n/1000)+'秒',c.ms===n)).join('')))
       +grp('けいさん',chip(m,'sign','false','たしのみ',!c.sign)+chip(m,'sign','true','たし＆ひき',c.sign))
-      +grp('こうかおん',chip(m,'sound','true','ON 🔊',c.sound!==false)+chip(m,'sound','false','OFF 🔇',c.sound===false))
+      +soundGrp(m)
       +grp('もんだい数',[5,10].map(n=>chip(m,'n',n,n+'問',c.n===n)).join(''));
     const d=c.auto?{digits:L[0],count:L[1],ms:L[2]}:c;
     side=`<div class="note">せってい</div><div style="font-size:22px;text-align:center;line-height:1.7;margin:8px 0">${d.digits}けた × ${d.count}こ<br>${d.ms/1000}秒ずつ<br>${c.sign?'たし＆ひき':'たしのみ'}</div>`;
@@ -622,6 +626,7 @@ function submit(){
   const aT=rm?`${c.ans} あまり ${c.rem}`:c.ans, gT=rm?`${S.q1} あまり ${S.input}`:S.input;
   const fb=$('#fb');
   fb.className=ok?'good':'bad'; fb.textContent=ok?'✓':`✗ 正解 ${aT}`;
+  ok?good():bad();
   S.res.push({o:S.mode==='calc'?c.op:'f',s:c.s,k:ok?1:0,m:ms,q:c.text,a:aT,A:c.ans,E:c.rem,g:gT,rv:c.rv});
   S.i++; S.combo=ok?S.combo+1:0; S.maxCombo=Math.max(S.maxCombo,S.combo); setCombo();
   if(S.mode==='calc'&&!ok&&S.cur.rv!=='retry') S.retry.push({at:S.i+3,item:{op:S.cur.op,ans:S.cur.ans,rem:S.cur.rem,text:S.cur.text,s:S.cur.s}});
@@ -745,6 +750,7 @@ const acts={
     if(!confirm('ごほうびカードを 1まい つかう？\n（おうちの人に見せてね）')) return;
     PROG.cards.have--; PROG.cards.used++; saveProg(); toast('カードをつかったよ！おうちの人に見せよう'); fillDaily();
   },
+  sound:d=>{ CFG.flash.sound=d.v==='true'; saveCfg(); audioInit(); if(CFG.flash.sound) good(); showSettings(d.m); },
   theme:d=>{ PROG.theme=d.v; applyTheme(); saveProg(); fillDaily(); },
   names:()=>{ showNames=!showNames; showSettings('calc'); },
   stage:d=>{
