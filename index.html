@@ -109,7 +109,7 @@ const R={
 };
 R.sub=R.add;
 function genCalc(c){
-  const op=pick(c.ops), L=c.level; let a,b,ans;
+  const op=pick(c.ops), L=c.lv?c.lv[op]:c.level; let a,b,ans;
   if(op==='div'){
     const {q,d}=R.div[L]; const qq=rnd(...q), dd=rnd(...d);
     a=qq*dd; b=dd; ans=qq;
@@ -135,18 +135,72 @@ function genFlash(c){
   }
   return {nums,ans:total};
 }
+// フラッシュ暗算の難易度はしご [けた数, 個数, 1こを見せるms]
+const FL=[[1,3,1500],[1,3,1000],[1,4,1000],[1,5,1000],[1,5,700],[2,3,1500],[2,3,1000],[2,4,1000],[2,5,1000],[2,5,700],[3,3,1500],[3,4,1500],[3,4,1000],[3,5,1000],[3,5,700]];
 //#GEN-END
 
 /* ---- 状態 ---- */
 let store=null, me=null, S=null, runId=0, CFG=null;
 let isParent=false, curScreen='', PROFILES=[], parentTk=0;
 const DEFAULT_CFG={
-  calc:{level:2,ops:['add','sub'],n:10},
-  flash:{digits:1,count:4,ms:1000,sign:false,n:10}
+  calc:{level:2,ops:['add','sub'],n:20,sec:0,auto:true},
+  flash:{digits:1,count:4,ms:1000,sign:false,n:10,auto:true}
 };
+const DAILY_GOAL=100;
 const loadCfg=()=>{CFG=lsJSON('fa_cfg_'+me.id,null)||JSON.parse(JSON.stringify(DEFAULT_CFG));
   for(const k in DEFAULT_CFG) CFG[k]={...DEFAULT_CFG[k],...CFG[k]};};
 const saveCfg=()=>lsSet('fa_cfg_'+me.id,JSON.stringify(CFG));
+
+/* ---- 進捗：復習キューとおまかせレベル ---- */
+let PROG=null, progPromise=null;
+function normProg(p){
+  const d={review:[],auto:{calc:{lv:{add:2,sub:2,mul:1,div:1},up:{add:0,sub:0,mul:0,div:0}},flash:{i:2,up:0}}};
+  if(!p||typeof p!=='object') return d;
+  const a=p.auto||{};
+  return {review:Array.isArray(p.review)?p.review.slice(0,30):[],
+    auto:{calc:{lv:{...d.auto.calc.lv,...(a.calc?.lv||{})},up:{...d.auto.calc.up,...(a.calc?.up||{})}},flash:{...d.auto.flash,...(a.flash||{})}}};
+}
+async function loadProg(){
+  try{ PROG=normProg(await store.loadProgress(me.id)); }
+  catch(e){ PROG=normProg(lsJSON('fa_prog_'+me.id,null)); }
+}
+const ensureProg=()=>PROG?Promise.resolve():(progPromise??=loadProg());
+const resetUser=()=>{PROG=null;progPromise=null};
+async function saveProg(){
+  lsSet('fa_prog_'+me.id,JSON.stringify(PROG));
+  try{ await store.saveProgress(me.id,PROG); }catch(e){ console.warn('progress not saved to cloud',e); }
+}
+function applyProgress(st){
+  const msgs=[], P=PROG;
+  if(st.mode==='calc'){
+    const q=P.review;
+    st.res.forEach(r=>{
+      if(r.rv==='retry') return;
+      const i=q.findIndex(x=>x.t===r.q);
+      if(r.rv==='queue'){ if(i>=0){ if(r.k){ q[i].c++; if(q[i].c>=2) q.splice(i,1); } else q[i].c=0; } }
+      else if(!r.k && i<0) q.push({t:r.q,o:r.o,a:r.a,c:0});
+    });
+    while(q.length>30) q.shift();
+    if(st.cfg.auto){
+      const A=P.auto.calc;
+      for(const op of st.cfg.ops){
+        const rs=st.res.filter(r=>r.o===op&&r.rv!=='retry');
+        if(rs.length<4) continue;
+        const acc=rs.filter(r=>r.k).length/rs.length;
+        let up=false, down=false;
+        if(acc>=0.9){ A.up[op]++; if((acc===1&&rs.length>=6)||A.up[op]>=2) up=true; }
+        else { A.up[op]=0; if(acc<0.7) down=true; }
+        if(up){ A.up[op]=0; if(A.lv[op]<5){ A.lv[op]++; msgs.push(`${OPS[op]} ${OPN[op]}が Lv${A.lv[op]} にレベルアップ！🎉`); } }
+        else if(down&&A.lv[op]>1){ A.lv[op]--; A.up[op]=0; msgs.push(`${OPS[op]} ${OPN[op]}を Lv${A.lv[op]} にもどしました。ここで力をつけよう`); }
+      }
+    }
+  } else if(st.cfg.auto && st.res.length>=3){
+    const A=P.auto.flash, acc=st.res.filter(r=>r.k).length/st.res.length;
+    if(acc>=0.9){ A.up++; if(A.up>=2||acc===1&&st.res.length>=5){ A.up=0; if(A.i<FL.length-1){ A.i++; msgs.push('フラッシュ暗算がレベルアップ！🎉'); } } }
+    else { A.up=0; if(acc<0.7&&A.i>0){ A.i--; msgs.push('フラッシュ暗算を少しやさしくしました'); } }
+  }
+  return msgs;
+}
 const render=(h,name='other')=>{curScreen=name;$('#app').innerHTML=h};
 function toast(t){const d=document.createElement('div');d.id='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),3500)}
 
@@ -160,8 +214,10 @@ function initLocal(){
     profiles:()=>d.profiles,
     rename(id,name){d.profiles.find(p=>p.id===id).name=name;persist()},
     async save(uid,s){(d.sessions[uid]??=[]).unshift(s);d.sessions[uid]=d.sessions[uid].slice(0,300);persist()},
-    async load(uid){return (d.sessions[uid]||[]).slice(0,100)},
-    signOut(){me=null;showLogin()}
+    async load(uid,lim=100){return (d.sessions[uid]||[]).slice(0,lim)},
+    async loadProgress(){return null},
+    async saveProgress(){},
+    signOut(){me=null;resetUser();showLogin()}
   };
   showLogin();
 }
@@ -183,12 +239,17 @@ async function initCloud(){
       const q=Fs.query(Fs.collection(db,'users',uid,'sessions'),Fs.orderBy('ts','desc'),Fs.limit(lim));
       return (await Fs.getDocs(q)).docs.map(x=>x.data());
     },
+    async loadProgress(uid){
+      const x=await Fs.getDoc(Fs.doc(db,'users',uid,'state','progress'));
+      return x.exists()?JSON.parse(x.data().data):null;
+    },
+    saveProgress:(uid,P)=>Fs.setDoc(Fs.doc(db,'users',uid,'state','progress'),{data:JSON.stringify(P),updated:Date.now()}),
     touchProfile:u=>Fs.setDoc(Fs.doc(db,'profiles',u.id),{name:u.name,email:u.email,updated:Date.now()},{merge:true}),
     async listProfiles(){ return (await Fs.getDocs(Fs.collection(db,'profiles'))).docs.map(d=>({id:d.id,...d.data()})); }
   };
   Au.onAuthStateChanged(auth,u=>{
     me=u?{id:u.uid,name:u.displayName||u.email||'ゲスト',email:u.email||''}:null;
-    isParent=false; PROFILES=[];
+    isParent=false; PROFILES=[]; resetUser();
     if(!me){showLogin();return}
     goHome();
     store.touchProfile(me).catch(()=>{});
@@ -199,7 +260,7 @@ async function initCloud(){
 
 /* ---- 画面 ---- */
 function showLogin(){
-  runId++; S=null;
+  stopTimer(); runId++; S=null;
   if(store.kind==='cloud'){
     render(`<div class="center stack"><h1 style="text-align:center">パッと算数</h1>
       <button class="pri big" data-act="gLogin">Googleでログイン</button>
@@ -212,35 +273,57 @@ function showLogin(){
   }
 }
 function goHome(){
-  runId++; S=null; loadCfg();
+  stopTimer(); runId++; S=null; loadCfg(); ensureProg();
   const par=isParent&&store.kind==='cloud';
   render(`<div class="hdr"><h1>${esc(me.name)}</h1><button class="ghost" data-act="logout">${store.kind==='cloud'?'ログアウト':'ひとを変える'}</button></div>
+    <div class="card" id="daily" style="min-height:62px;margin-bottom:12px"></div>
     <div class="cols3${par?' cols4':''}">
       <button class="pri" data-act="settings" data-m="calc"><i>⚡</i>計算ダッシュ<small>パッパッと計算</small></button>
       <button class="pri" data-act="settings" data-m="flash"><i>👀</i>フラッシュ暗算<small>数字を見て合計</small></button>
       <button data-act="history"><i>📊</i>きろく<small>せいせきを見る</small></button>
       ${par?`<button data-act="parent"><i>👪</i>親用ビュー<small>こどもの記録</small></button>`:''}
     </div>`,'home');
+  fillDaily();
+}
+async function fillDaily(){
+  let list=[]; try{list=await store.load(me.id,200)}catch(e){}
+  const el=$('#daily'); if(!el||curScreen!=='home') return;
+  const t0=new Date(); t0.setHours(0,0,0,0);
+  const n=list.filter(x=>x.ts>=t0.getTime()).reduce((a,x)=>a+x.n,0), pc=Math.min(100,Math.round(n/DAILY_GOAL*100));
+  el.innerHTML=`きょう <b style="font-size:22px">${n}</b> 問 <span class="note">/ 目標 ${DAILY_GOAL}問 ${n>=DAILY_GOAL?'🎉 たっせい！':''}</span>
+    <div style="height:10px;background:#d9deea;border-radius:5px;margin-top:6px"><div style="height:10px;width:${pc}%;background:${n>=DAILY_GOAL?'#1a9b4a':'#2f6bff'};border-radius:5px"></div></div>`;
 }
 const chip=(m,k,v,label,on)=>`<button class="chip ${on?'on':''}" data-act="cfg" data-m="${m}" data-k="${k}" data-v="${v}">${label}</button>`;
 function showSettings(m){
   const c=CFG[m], grp=(t,inner)=>`<div class="opt"><h2>${t}</h2><div class="row">${inner}</div></div>`;
+  const autoChips=chip(m,'auto','true','おまかせ',c.auto)+chip(m,'auto','false','じぶんで決める',!c.auto);
   let title,opts,side;
   if(m==='calc'){
     title='⚡ 計算ダッシュ';
-    opts=grp('レベル',[1,2,3,4,5].map(l=>chip(m,'level',l,'Lv'+l,c.level===l)).join(''))
-      +`<p class="note" style="margin:-2px 0 12px 134px">Lv1：1けた・九九 / Lv2：2けた±1けた、2けた×1けた / Lv3：2けた同士 / Lv4：3けた±2けた、2けた×2けた / Lv5：3けた同士</p>`
+    const lim=c.sec?'t'+c.sec:'n'+c.n;
+    const limChip=(v,label,n,sec)=>`<button class="chip ${lim===v?'on':''}" data-act="limit" data-n="${n}" data-sec="${sec}">${label}</button>`;
+    const lv=c.auto?Object.fromEntries(Object.keys(OPS).map(o=>[o,PROG.auto.calc.lv[o]])):null;
+    opts=grp('むずかしさ',autoChips)
+      +(c.auto
+        ?`<p class="note" style="margin:-2px 0 12px 134px">いまのレベル：${c.ops.map(o=>`${OPS[o]}Lv${lv[o]}`).join('　')}（正答率に合わせて自動で変わります）</p>`
+        :grp('レベル',[1,2,3,4,5].map(l=>chip(m,'level',l,'Lv'+l,c.level===l)).join(''))
+          +`<p class="note" style="margin:-2px 0 12px 134px">Lv1：1けた・九九 / Lv2：2けた±1けた、2けた×1けた / Lv3：2けた同士 / Lv4：3けた±2けた、2けた×2けた / Lv5：3けた同士</p>`)
       +grp('しゅるい',Object.keys(OPS).map(o=>chip(m,'ops',o,OPS[o]+' '+OPN[o],c.ops.includes(o))).join(''))
-      +grp('もんだい数',[10,20,30].map(n=>chip(m,'n',n,n+'問',c.n===n)).join(''));
-    side=`<div class="note">れい</div><div class="sample">${genCalc(c).text}</div>`;
+      +grp('おわり方',limChip('n10','10問',10,0)+limChip('n20','20問',20,0)+limChip('n30','30問',30,0)+limChip('t180','3分',0,180)+limChip('t300','5分',0,300));
+    side=`<div class="note">れい</div><div class="sample">${genCalc(c.auto?{...c,lv}:c).text}</div>`;
   } else {
     title='👀 フラッシュ暗算';
-    opts=grp('けた数',[1,2,3].map(n=>chip(m,'digits',n,n+'けた',c.digits===n)).join(''))
-      +grp('数字の個数',[3,4,5,7,10].map(n=>chip(m,'count',n,n+'こ',c.count===n)).join(''))
-      +grp('1こを見せる時間',[1500,1000,700,500,300].map(n=>chip(m,'ms',n,(n/1000)+'秒',c.ms===n)).join(''))
+    const L=FL[Math.min(FL.length-1,Math.max(0,PROG.auto.flash.i))];
+    opts=grp('むずかしさ',autoChips)
+      +(c.auto
+        ?`<p class="note" style="margin:-2px 0 12px 134px">いま：${L[0]}けた × ${L[1]}こ ・ ${L[2]/1000}秒ずつ（正解が続くと自動で上がります）</p>`
+        :grp('けた数',[1,2,3].map(n=>chip(m,'digits',n,n+'けた',c.digits===n)).join(''))
+          +grp('数字の個数',[3,4,5,7,10].map(n=>chip(m,'count',n,n+'こ',c.count===n)).join(''))
+          +grp('1こを見せる時間',[1500,1000,700,500,300].map(n=>chip(m,'ms',n,(n/1000)+'秒',c.ms===n)).join('')))
       +grp('けいさん',chip(m,'sign','false','たしのみ',!c.sign)+chip(m,'sign','true','たし＆ひき',c.sign))
       +grp('もんだい数',[5,10].map(n=>chip(m,'n',n,n+'問',c.n===n)).join(''));
-    side=`<div class="note">せってい</div><div style="font-size:22px;text-align:center;line-height:1.7;margin:8px 0">${c.digits}けた × ${c.count}こ<br>${c.ms/1000}秒ずつ<br>${c.sign?'たし＆ひき':'たしのみ'}</div>`;
+    const d=c.auto?{digits:L[0],count:L[1],ms:L[2]}:c;
+    side=`<div class="note">せってい</div><div style="font-size:22px;text-align:center;line-height:1.7;margin:8px 0">${d.digits}けた × ${d.count}こ<br>${d.ms/1000}秒ずつ<br>${c.sign?'たし＆ひき':'たしのみ'}</div>`;
   }
   render(`<div class="hdr"><button class="ghost" data-act="home">← もどる</button><h1>${title}</h1></div>
     <div class="split"><div class="col">${opts}</div>
@@ -254,7 +337,13 @@ function renderPlay(){
       <button class="k2" data-key="back">⌫</button><button data-key="0">0</button><button class="k2" data-key="ok">OK</button></div>
   </div>`);
 }
-const setProg=()=>{const p=$('#prog'); if(p)p.textContent=`${Math.min(S.i+1,S.cfg.n)} / ${S.cfg.n}`};
+const setProg=()=>{
+  const p=$('#prog'); if(!p||!S) return;
+  if(S.cfg.sec){ const left=Math.max(0,Math.ceil((S.deadline-Date.now())/1000));
+    p.textContent=`残り ${Math.floor(left/60)}:${String(left%60).padStart(2,'0')} ・ ${S.res.length}問`; }
+  else p.textContent=`${Math.min(S.i+1,S.cfg.n)} / ${S.cfg.n}`;
+};
+const stopTimer=()=>{ if(S&&S.timer){clearInterval(S.timer);S.timer=null} };
 const fmtFlash=(n,i,sign)=>i===0?String(Math.abs(n)):(sign?(n>=0?'＋':'−'):'')+Math.abs(n);
 function renderInp(){
   const len=String(S.cur.ans).length;
@@ -263,17 +352,37 @@ function renderInp(){
 
 /* ---- ゲーム進行 ---- */
 function startSession(m){
+  stopTimer();
   const cfg=JSON.parse(JSON.stringify(CFG[m]));
-  S={mode:m,cfg,i:0,res:[],accepting:false,input:'',cur:null,t0:0};
-  renderPlay(); setProg();
+  if(m==='calc'){ if(cfg.auto) cfg.lv={...PROG.auto.calc.lv}; }
+  else if(cfg.auto){ const L=FL[Math.min(FL.length-1,Math.max(0,PROG.auto.flash.i))]; cfg.digits=L[0]; cfg.count=L[1]; cfg.ms=L[2]; }
+  S={mode:m,cfg,i:0,res:[],accepting:false,input:'',cur:null,t0:0,retry:[],rvSeen:new Set(),rvUsed:0,
+     review:m==='calc'?PROG.review.filter(x=>cfg.ops.includes(x.o)):[]};
+  renderPlay();
+  if(m==='calc'&&cfg.sec){
+    S.deadline=Date.now()+cfg.sec*1000;
+    S.timer=setInterval(()=>{ if(!S) return; if(Date.now()>=S.deadline){ stopTimer(); finish(); } else setProg(); },250);
+  }
+  setProg();
   if(m==='calc') nextQ();
   else $('#q').innerHTML='<button class="pri big" data-act="flashGo">スタート</button>';
 }
+function pickCalc(){
+  // 1) 同じセッションで間違えた問題を、少しあとにもう一度
+  const k=S.retry.findIndex(r=>r.at<=S.i);
+  if(k>=0){ const r=S.retry.splice(k,1)[0]; return {...r.item,rv:'retry'}; }
+  // 2) 前に間違えた問題の復習（ときどき混ぜる）
+  if(S.review.length&&S.rvUsed<5&&Math.random()<0.2){
+    const pool=S.review.filter(x=>!S.rvSeen.has(x.t));
+    if(pool.length){ const it=pick(pool); S.rvSeen.add(it.t); S.rvUsed++; return {op:it.o,ans:it.a,text:it.t,rv:'queue'}; }
+  }
+  return genCalc(S.cfg);
+}
 function nextQ(){
-  if(S.i>=S.cfg.n) return finish();
+  if(!S.cfg.sec&&S.i>=S.cfg.n) return finish();
   setProg();
   if(S.mode==='calc'){
-    S.cur=genCalc(S.cfg); $('#q').textContent=S.cur.text;
+    S.cur=pickCalc(); $('#q').textContent=S.cur.text;
     S.input=''; S.accepting=true; S.t0=performance.now(); renderInp();
   } else flashSeq();
 }
@@ -305,35 +414,42 @@ function submit(){
   const ms=Math.round(performance.now()-S.t0), ok=(+S.input===S.cur.ans);
   const fb=$('#fb');
   fb.className=ok?'good':'bad'; fb.textContent=ok?'✓':`✗ 正解 ${S.cur.ans}`;
-  S.res.push({o:S.mode==='calc'?S.cur.op:'f',k:ok?1:0,m:ms,q:S.cur.text,a:S.cur.ans,g:S.input});
+  S.res.push({o:S.mode==='calc'?S.cur.op:'f',k:ok?1:0,m:ms,q:S.cur.text,a:S.cur.ans,g:S.input,rv:S.cur.rv});
   S.i++;
+  if(S.mode==='calc'&&!ok&&S.cur.rv!=='retry') S.retry.push({at:S.i+3,item:{op:S.cur.op,ans:S.cur.ans,text:S.cur.text}});
   if(S.mode==='calc') nextQ();
   else setTimeout(()=>{ if(S) nextQ(); }, ok?250:1300);
 }
 function finish(){
-  runId++;
-  const n=S.res.length, correct=S.res.filter(r=>r.k).length, ms=S.res.reduce((a,r)=>a+r.m,0);
+  stopTimer(); runId++; S.accepting=false;
+  const n=S.res.length;
+  if(!n){ toast('時間切れ：もんだいに答えられませんでした'); goHome(); return; }
+  const correct=S.res.filter(r=>r.k).length, ms=S.res.reduce((a,r)=>a+r.m,0);
   const sess={ts:Date.now(),mode:S.mode,cfg:S.cfg,n,correct,ms,
     r:S.mode==='calc'?S.res.map(r=>({o:r.o,k:r.k,m:r.m})):undefined};
   if(!sess.r) delete sess.r;
   Promise.resolve(store.save(me.id,sess)).catch(()=>toast('きろくを保存できませんでした'));
-  const wrong=S.res.filter(r=>!r.k), m=S.mode;
-  render(`<div class="hdr"><h1>おつかれさま！</h1></div>
+  const msgs=PROG?applyProgress(S):[];
+  if(PROG) saveProg();
+  const wrong=S.res.filter(r=>!r.k&&r.rv!=='retry'), m=S.mode, timed=!!S.cfg.sec;
+  render(`<div class="hdr"><h1>${timed?'時間です！':'おつかれさま！'}</h1></div>
     <div class="split2"><div class="col">
       <div class="card scorebig"><b class="${correct===n?'good':''}">${correct} / ${n}</b> 正解</div>
       ${m==='calc'?`<div class="card">1問あたり <b>${(ms/n/1000).toFixed(1)}</b> 秒</div>`:''}
+      ${msgs.map(t=>`<div class="card good"><b>${esc(t)}</b></div>`).join('')}
       <div class="stack" style="margin-top:14px"><button class="pri big" data-act="start" data-m="${m}">もういっかい</button>
       <button class="big" data-act="home">ホームへ</button></div>
     </div><div class="col">
-      ${wrong.length?`<h2 style="margin-top:0">まちがい</h2>${wrong.map(r=>`<div class="card">${esc(r.q)}${m==='calc'?' =':' → 合計'} <b>${r.a}</b>　<span class="bad">（きみ：${esc(r.g)}）</span></div>`).join('')}`:`<div class="card good scorebig">ぜんぶ正解！</div>`}
+      ${wrong.length?`<h2 style="margin-top:0">まちがい（またあとで出るよ）</h2>${wrong.map(r=>`<div class="card">${esc(r.q)}${m==='calc'?' =':' → 合計'} <b>${r.a}</b>　<span class="bad">（きみ：${esc(r.g)}）</span></div>`).join('')}`:`<div class="card good scorebig">ぜんぶ正解！</div>`}
     </div></div>`);
 }
 
 /* ---- きろく ---- */
 const fmtDate=ts=>{const d=new Date(ts),p=n=>String(n).padStart(2,'0');return `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`};
 const cfgLabel=s=>s.mode==='calc'
-  ? `計算 Lv${s.cfg.level} ${s.cfg.ops.map(o=>OPS[o]).join('')}`
-  : `フラッシュ ${s.cfg.digits}けた×${s.cfg.count}こ ${s.cfg.ms/1000}秒${s.cfg.sign?' ±':''}`;
+  ? `計算 ${s.cfg.auto?'おまかせ':'Lv'+s.cfg.level} ${s.cfg.ops.map(o=>OPS[o]).join('')}${s.cfg.sec?' '+s.cfg.sec/60+'分':''}`
+  : `フラッシュ ${s.cfg.digits}けた×${s.cfg.count}こ ${s.cfg.ms/1000}秒${s.cfg.sign?' ±':''}${s.cfg.auto?' おまかせ':''}`;
+
 function histParts(list){
   const agg={};
   list.filter(s=>s.mode==='calc'&&s.r).forEach(s=>s.r.forEach(r=>{const a=agg[r.o]??={n:0,k:0,m:0};a.n++;a.k+=r.k;a.m+=r.m}));
@@ -396,18 +512,19 @@ const acts={
   gLogin:()=>store.signIn(),
   forceLocal:()=>{lsSet('fa_force_local','1');initLocal()},
   useCloud:()=>{lsSet('fa_force_local','0');boot()},
-  pickUser:d=>{me={id:d.id,name:store.profiles().find(p=>p.id===d.id).name};goHome()},
+  pickUser:d=>{me={id:d.id,name:store.profiles().find(p=>p.id===d.id).name};resetUser();goHome()},
   rename:d=>{const n=prompt('なまえ',store.profiles().find(p=>p.id===d.id).name);if(n&&n.trim()){store.rename(d.id,n.trim().slice(0,12));showLogin()}},
   logout:()=>store.signOut(),
   home:()=>goHome(),
-  settings:d=>showSettings(d.m),
+  settings:async d=>{await ensureProg();showSettings(d.m)},
+  limit:d=>{const c=CFG.calc;if(+d.n)c.n=+d.n;c.sec=+d.sec;saveCfg();showSettings('calc')},
   cfg:d=>{
     const c=CFG[d.m];
     if(d.k==='ops'){const s=new Set(c.ops);s.has(d.v)?s.delete(d.v):s.add(d.v);if(!s.size)s.add(d.v);c.ops=[...s]}
     else c[d.k]=d.v==='true'?true:d.v==='false'?false:+d.v;
     saveCfg(); showSettings(d.m);
   },
-  start:d=>startSession(d.m),
+  start:async d=>{await ensureProg();startSession(d.m)},
   flashGo:()=>nextQ(),
   history:()=>showHistory(),
   parent:()=>showParent(PROFILES.find(p=>p.id!==me.id)?.id),

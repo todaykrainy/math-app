@@ -34,6 +34,12 @@ service cloud.firestore {
       allow read: if (allowed() && request.auth.uid == uid) || isParent();
       allow update, delete: if false;
     }
+    match /users/{uid}/state/{docId} {
+      allow get: if (allowed() && request.auth.uid == uid) || isParent();
+      allow create, update: if allowed() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['data', 'updated']);
+      allow delete: if false;
+    }
     match /profiles/{uid} {
       allow create, update: if allowed() && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['name', 'email', 'updated'])
@@ -45,6 +51,8 @@ service cloud.firestore {
   }
 }
 ```
+
+`users/{uid}/state/progress` は、復習する問題と「おまかせ」のレベルを保存します。
 
 親用ビュー: 親のアカウントでログインすると、ホームに「親用ビュー」が出ます（`profiles` の一覧を読めるのは親だけです）。
 
