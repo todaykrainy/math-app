@@ -234,7 +234,7 @@ let store=null, me=null, S=null, runId=0, CFG=null;
 let isParent=false, curScreen='', PROFILES=[], parentTk=0;
 const DEFAULT_CFG={
   calc:{op:'add',st:{add:3,sub:3,mul:2,div:2},n:20,sec:0,auto:true},
-  flash:{digits:1,count:4,ms:1000,sign:false,n:10,auto:true,sound:true}
+  flash:{digits:1,count:4,ms:1000,sign:false,n:10,auto:true,sound:true,ansSec:0}
 };
 const DAILY_GOAL=100;
 const SEL={add:['add'],sub:['sub'],mul:['mul'],div:['div'],mixA:['add','sub'],mixM:['mul','div'],mix:['add','sub','mul','div']};
@@ -522,6 +522,7 @@ function showSettings(m){
           +grp('数字の個数',[3,4,5,7,10].map(n=>chip(m,'count',n,n+'こ',c.count===n)).join(''))
           +grp('1こを見せる時間',[1500,1000,700,500,300].map(n=>chip(m,'ms',n,(n/1000)+'秒',c.ms===n)).join('')))
       +grp('けいさん',chip(m,'sign','false','たしのみ',!c.sign)+chip(m,'sign','true','たし＆ひき',c.sign))
+      +grp('こたえる時間',[0,5,10,20].map(n=>chip(m,'ansSec',n,n?n+'秒':'むせいげん',(c.ansSec||0)===n)).join(''))
       +soundGrp(m)
       +grp('もんだい数',[5,10].map(n=>chip(m,'n',n,n+'問',c.n===n)).join(''));
     const d=c.auto?{digits:L[0],count:L[1],ms:L[2]}:c;
@@ -546,7 +547,7 @@ const setProg=()=>{
     p.textContent=`残り ${Math.floor(left/60)}:${String(left%60).padStart(2,'0')} ・ ${S.res.filter(r=>r.k).length}問正解${S.bestV?` （ベスト ${S.bestV}問）`:''}`; }
   else p.textContent=`${Math.min(S.i+1,S.cfg.n)} / ${S.cfg.n}`;
 };
-const stopTimer=()=>{ if(S&&S.timer){clearInterval(S.timer);S.timer=null} };
+const stopTimer=()=>{ if(S&&S.timer){clearInterval(S.timer);S.timer=null} if(S&&S.qt){clearInterval(S.qt);S.qt=null} };
 const fmtFlash=(n,i,sign)=>i===0?String(Math.abs(n)):(sign?(n>=0?'＋':'−'):'')+Math.abs(n);
 const hasRem=c=>c.rem!=null;
 function renderInp(){
@@ -605,6 +606,15 @@ async function flashSeq(){
     $('#q').textContent=''; await sleep(90); if(my!==runId)return;
   }
   chime(); $('#q').textContent='？'; S.input=''; S.accepting=true; S.t0=performance.now(); renderInp();
+  const lim=c.ansSec||0;
+  if(lim){
+    S.qLeft=lim; $('#fb').className=''; $('#fb').textContent=`のこり ${lim}秒`;
+    clearInterval(S.qt);
+    S.qt=setInterval(()=>{
+      if(!S||!S.accepting||my!==runId){ clearInterval(S&&S.qt); return; }
+      S.qLeft--; if(S.qLeft<=0) submit(true); else $('#fb').textContent=`のこり ${S.qLeft}秒`;
+    },1000);
+  }
 }
 function advance(){
   if(hasRem(S.cur)&&S.ph===0){ S.q1=S.input; S.input=''; S.ph=1; renderInp(); }
@@ -619,11 +629,11 @@ function press(key){
   renderInp();
   if(S.input.length>=len) advance();
 }
-function submit(){
-  S.accepting=false;
-  const c=S.cur, rm=hasRem(c), ms=Math.round(performance.now()-S.t0);
-  const ok=rm?(+S.q1===c.ans&&+S.input===c.rem):(+S.input===c.ans);
-  const aT=rm?`${c.ans} あまり ${c.rem}`:c.ans, gT=rm?`${S.q1} あまり ${S.input}`:S.input;
+function submit(to=false){
+  clearInterval(S.qt); S.accepting=false;
+  const c=S.cur, rm=hasRem(c), ms=to?(S.cfg.ansSec||0)*1000:Math.round(performance.now()-S.t0);
+  const ok=!to&&(rm?(+S.q1===c.ans&&+S.input===c.rem):(+S.input===c.ans));
+  const aT=rm?`${c.ans} あまり ${c.rem}`:c.ans, gT=to?'じかんぎれ':rm?`${S.q1} あまり ${S.input}`:S.input;
   const fb=$('#fb');
   fb.className=ok?'good':'bad'; fb.textContent=ok?'✓':`✗ 正解 ${aT}`;
   ok?good():bad();
