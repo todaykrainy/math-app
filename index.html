@@ -75,7 +75,14 @@ th{background:#eef1f7;font-size:14px;color:#4a5570}
 /* ====== 設定 ======
    Firebaseを使う場合は、ここに設定オブジェクトを貼る（SETUP.md参照）。
    null のままなら「この端末だけ」モードで動く。 */
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCz1Pz3hYiUXtxb9fnRXJmd7GSQQZxWOoM",
+  authDomain: "math-app-c20b0.firebaseapp.com",
+  projectId: "math-app-c20b0",
+  storageBucket: "math-app-c20b0.firebasestorage.app",
+  messagingSenderId: "1040508050533",
+  appId: "1:1040508050533:web:912e7250d04ec89cc07a8c"
+};
 /* ================== */
 
 const $ = (s,r=document)=>r.querySelector(s);
