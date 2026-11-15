@@ -6,17 +6,18 @@
 <meta name="theme-color" content="#2f6bff">
 <title>パッと算数</title>
 <style>
+html{--pri:#2f6bff}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;font-family:system-ui,"Hiragino Sans","Noto Sans JP",sans-serif;background:#f4f6fb;color:#1c2333;touch-action:manipulation;-webkit-user-select:none;user-select:none}
 #app{height:100%;padding:14px 22px;display:flex;flex-direction:column}
 h1{font-size:28px;margin:0}
 h2{font-size:18px;margin:18px 0 8px;color:#4a5570}
 button{font:inherit;border:0;border-radius:14px;padding:14px 18px;background:#fff;box-shadow:0 1px 0 #cfd6e6;color:inherit;cursor:pointer}
-button.pri{background:#2f6bff;color:#fff;font-weight:700}
+button.pri{background:var(--pri);color:#fff;font-weight:700}
 button.big{font-size:24px;padding:22px}
 button.ghost{background:transparent;box-shadow:none;color:#5a6682;padding:8px 12px}
 button.chip{padding:12px 16px;font-size:18px;margin:0 8px 8px 0}
-button.chip.on{background:#2f6bff;color:#fff;font-weight:700}
+button.chip.on{background:var(--pri);color:#fff;font-weight:700}
 .row{display:flex;flex-wrap:wrap;align-items:center}
 .sp{flex:1}
 .stack{display:flex;flex-direction:column;gap:12px}
@@ -54,7 +55,7 @@ th{background:#eef1f7;font-size:14px;color:#4a5570}
 .top{grid-column:1/3;display:flex;align-items:center;font-size:20px;color:#5a6682}
 .main{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0}
 #q{font-size:clamp(48px,min(10vw,24vh),170px);font-weight:700;font-variant-numeric:tabular-nums;min-height:1.25em;text-align:center;line-height:1.25}
-#inp{font-size:clamp(40px,min(8vw,16vh),110px);letter-spacing:.12em;font-variant-numeric:tabular-nums;min-height:1.25em;color:#2f6bff;font-weight:700}
+#inp{font-size:clamp(40px,min(8vw,16vh),110px);letter-spacing:.12em;font-variant-numeric:tabular-nums;min-height:1.25em;color:var(--pri);font-weight:700}
 #fb{height:1.8em;font-size:28px;font-weight:700}
 .pad{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(4,1fr);gap:10px;min-height:0;padding-bottom:4px}
 .pad button{font-size:clamp(30px,7vh,54px);padding:0;font-weight:700;border-radius:18px}
@@ -67,6 +68,17 @@ th{background:#eef1f7;font-size:14px;color:#4a5570}
   .play{display:flex;flex-direction:column}
   .pad{height:46vh;flex:none}
 }
+/* レベルの地図 */
+.map{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:6px}
+.node{width:56px;height:56px;border-radius:50%;padding:0;font-size:20px;font-weight:700;position:relative;background:#fff;border:3px solid #d5dcec;box-shadow:none;color:#5a6682}
+.node i{font-style:normal;position:absolute;right:-6px;top:-10px;font-size:18px}
+.node.past{background:color-mix(in srgb,var(--pri) 14%,#fff);border-color:color-mix(in srgb,var(--pri) 35%,#fff);color:var(--pri)}
+.node.ok{border-color:#e8b400}
+.node.ng{background:#fde8e6;border-color:#e8665f;color:#c0342d}
+.node.cur{background:var(--pri);border-color:var(--pri);color:#fff}
+.dot{width:34px;height:34px;border-radius:50%;padding:0;border:3px solid #fff;box-shadow:0 0 0 1px #cfd6e6}
+.dot.on{box-shadow:0 0 0 3px #1c2333}
+#combo{margin-left:18px;font-weight:700;color:#e8730c}
 #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1c2333;color:#fff;padding:10px 16px;border-radius:12px;font-size:15px}
 </style>
 </head>
@@ -237,10 +249,37 @@ const loadCfg=()=>{CFG=lsJSON('fa_cfg_'+me.id,null)||JSON.parse(JSON.stringify(D
   for(const k in DEFAULT_CFG) CFG[k]={...DEFAULT_CFG[k],...CFG[k]};};
 const saveCfg=()=>lsSet('fa_cfg_'+me.id,JSON.stringify(CFG));
 
+/* ---- テーマ・キャラクター ---- */
+const THEMES={blue:'#2f6bff',green:'#1fa05a',orange:'#f07a12',pink:'#e0508c',purple:'#7a4cf0'};
+const CHAR=[{at:0,name:'たまご'},{at:30,name:'ちびパット'},{at:150,name:'パット'},{at:400,name:'はねパット'},{at:900,name:'おうじパット'},{at:2000,name:'だいパット'}];
+const charStage=t=>{let k=0;CHAR.forEach((c,i)=>{if(t>=c.at)k=i});return k};
+function charSVG(f,col){
+  const eyes='<circle cx="40" cy="55" r="6" fill="#fff"/><circle cx="60" cy="55" r="6" fill="#fff"/><circle cx="41" cy="56" r="3" fill="#1c2333"/><circle cx="61" cy="56" r="3" fill="#1c2333"/>';
+  if(f===0) return `<svg viewBox="0 0 100 100"><ellipse cx="50" cy="58" rx="28" ry="34" fill="#fff" stroke="${col}" stroke-width="5"/><circle cx="40" cy="48" r="5" fill="${col}" opacity=".35"/><circle cx="60" cy="68" r="6" fill="${col}" opacity=".35"/><path d="M26 52l9 7 8-8 9 8 8-8 9 7 8-6" fill="none" stroke="${col}" stroke-width="3"/></svg>`;
+  const rx=26+f*1.5, ry=22+f*1.5;
+  let g='';
+  if(f>=5) g+=`<path d="M22 50 L8 92 L92 92 L78 50Z" fill="#d8453b"/>`;
+  if(f>=3) g+=`<ellipse cx="${50-rx-4}" cy="62" rx="9" ry="14" fill="${col}" opacity=".55" transform="rotate(-20 ${50-rx-4} 62)"/><ellipse cx="${50+rx+4}" cy="62" rx="9" ry="14" fill="${col}" opacity=".55" transform="rotate(20 ${50+rx+4} 62)"/>`;
+  g+=`<ellipse cx="50" cy="${70-ry*0.2}" rx="${rx}" ry="${ry+4}" fill="${col}"/>`;
+  if(f>=2) g+=`<ellipse cx="33" cy="${44-f}" rx="7" ry="10" fill="${col}"/><ellipse cx="67" cy="${44-f}" rx="7" ry="10" fill="${col}"/>`;
+  g+=eyes+`<path d="M44 66q6 6 12 0" fill="none" stroke="#1c2333" stroke-width="3" stroke-linecap="round"/><circle cx="33" cy="64" r="4" fill="#fff" opacity=".45"/><circle cx="67" cy="64" r="4" fill="#fff" opacity=".45"/>`;
+  if(f>=4) g+=`<path d="M34 38l5-14 6 10 5-14 5 14 6-10 5 14z" fill="#f5c400" stroke="#d99a00" stroke-width="2" transform="translate(0,${f>=5?-2:0})"/>`;
+  if(f>=5) g+=`<path d="M82 24l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" fill="#f5c400"/>`;
+  return `<svg viewBox="0 0 100 100">${g}</svg>`;
+}
+const dstr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const dayDiff=(a,b)=>Math.round((Date.parse(b)-Date.parse(a))/864e5);
+function applyTheme(){
+  const c=THEMES[PROG?.theme]||THEMES.blue;
+  document.documentElement.style.setProperty('--pri',c);
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content',c);
+}
+
 /* ---- 進捗：復習キューとおまかせレベル ---- */
 let PROG=null, progPromise=null;
 function normProg(p){
   const d={v:3,review:[],auto:{calc:{lv:{add:3,sub:3,mul:2,div:2},up:{add:0,sub:0,mul:0,div:0}},flash:{i:2,up:0}}};
+  d.best={};d.mast={};d.streak={last:'',n:0,best:0};d.today=null;d.total=null;d.theme='blue';
   if(!p||typeof p!=='object') return d;
   const a=p.auto||{}, old=!(p.v>=2); // v2より前は5段階だったので、計算レベルを初期化する
   const DM=[0,1,2,3,4,5,7,8,9,10,12,13,15,17]; // v2→v3：わり算にあまりのレベルを挿入したので番号を移す
@@ -248,12 +287,24 @@ function normProg(p){
   const lv={...d.auto.calc.lv}, up={...d.auto.calc.up};
   if(!old) for(const o in lv){ let x=Math.floor(+a.calc?.lv?.[o]); if(x>=1){ if(mig&&o==='div') x=DM[Math.min(x,13)]; lv[o]=Math.min(NST(o),x); } up[o]=+a.calc?.up?.[o]||0; }
   const rv=(Array.isArray(p.review)?p.review:[]).slice(0,30).map(x=>mig&&x.o==='div'&&x.s?{...x,s:DM[Math.min(x.s,13)]}:x);
-  return {v:3,review:rv,
+  const ex={total:p.total??null,today:p.today||null,streak:{...d.streak,...(p.streak||{})},best:p.best||{},mast:p.mast||{},theme:THEMES[p.theme]?p.theme:'blue'};
+  return {v:3,...ex,review:rv,
     auto:{calc:{lv,up},flash:{...d.auto.flash,...(a.flash||{})}}};
 }
 async function loadProg(){
   try{ PROG=normProg(await store.loadProgress(me.id)); }
   catch(e){ PROG=normProg(lsJSON('fa_prog_'+me.id,null)); }
+  await backfill();
+  applyTheme();
+}
+// 累計・今日の問題数がまだ無いときは、記録から数えなおす
+async function backfill(){
+  const td=dstr(new Date());
+  if(PROG.total!=null&&PROG.today?.d===td) return;
+  let list=[]; try{list=await store.load(me.id,200)}catch(e){}
+  const t0=new Date(); t0.setHours(0,0,0,0);
+  if(PROG.total==null) PROG.total=list.reduce((a,x)=>a+x.correct,0);
+  if(PROG.today?.d!==td) PROG.today={d:td,n:list.filter(x=>x.ts>=t0.getTime()).reduce((a,x)=>a+x.n,0)};
 }
 const ensureProg=()=>PROG?Promise.resolve():(progPromise??=loadProg());
 const resetUser=()=>{PROG=null;progPromise=null};
@@ -263,6 +314,7 @@ async function saveProg(){
 }
 function applyProgress(st){
   const msgs=[], P=PROG;
+  if(st.mode==='calc') st.res.forEach(r=>{ if(!r.s) return; const a=P.mast[r.o+':'+r.s]??={n:0,k:0}; a.n++; a.k+=r.k; if(a.n>40){a.n=Math.round(a.n/2);a.k=Math.round(a.k/2)} });
   if(st.mode==='calc'){
     const q=P.review;
     st.res.forEach(r=>{
@@ -290,7 +342,26 @@ function applyProgress(st){
     if(acc>=0.9){ A.up++; if(A.up>=2||acc===1&&st.res.length>=5){ A.up=0; if(A.i<FL.length-1){ A.i++; msgs.push('フラッシュ暗算がレベルアップ！🎉'); } } }
     else { A.up=0; if(acc<0.7&&A.i>0){ A.i--; msgs.push('フラッシュ暗算を少しやさしくしました'); } }
   }
+  applyGame(st,msgs);
   return msgs;
+}
+const bestKey=cfg=>cfg.ops.map(o=>o+cfg.lv[o]).join('')+':'+(cfg.sec?'t'+cfg.sec:'n'+cfg.n);
+function applyGame(st,msgs){
+  const P=PROG, n=st.res.length, k=st.res.filter(r=>r.k).length, td=dstr(new Date());
+  const f0=charStage(P.total||0); P.total=(P.total||0)+k; const f1=charStage(P.total);
+  if(f1>f0) msgs.push(`🥚 ${CHAR[f0].name} が「${CHAR[f1].name}」にしんか！`);
+  if(P.streak.last!==td){ const df=P.streak.last?dayDiff(P.streak.last,td):99; P.streak.n=df<=2?P.streak.n+1:1; P.streak.last=td; P.streak.best=Math.max(P.streak.best||0,P.streak.n);
+    if(P.streak.n>=2) msgs.push(`🔥 ${P.streak.n}日れんぞく！`); }
+  if(P.today?.d!==td) P.today={d:td,n:0};
+  const t0=P.today.n; P.today.n+=n;
+  if(t0<DAILY_GOAL&&P.today.n>=DAILY_GOAL) msgs.push(`🎉 きょうの目標 ${DAILY_GOAL}問 たっせい！`);
+  if(st.mode==='calc'){
+    const key=bestKey(st.cfg), timed=!!st.cfg.sec, ms=st.res.reduce((a,r)=>a+r.m,0), old=P.best[key];
+    if(timed){ if(k>0){ if(!old) P.best[key]={v:k}; else if(k>old.v){ msgs.push(`🏆 ベスト更新！ ${k}問（まえのベスト ${old.v}問）`); P.best[key]={v:k}; } } }
+    else if(n>=5&&k/n>=0.9){ const v=Math.round(ms/n/100)/10;
+      if(!old) P.best[key]={v}; else if(v<old.v){ msgs.push(`🏆 ベスト更新！ 1問 ${v}秒（まえのベスト ${old.v}秒）`); P.best[key]={v}; } }
+  }
+  if(st.maxCombo>=5) msgs.push(`🔥 さいこう ${st.maxCombo} れんぞく正解`);
 }
 const render=(h,name='other')=>{curScreen=name;$('#app').innerHTML=h};
 function toast(t){const d=document.createElement('div');d.id='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),3500)}
@@ -364,10 +435,10 @@ function showLogin(){
   }
 }
 function goHome(){
-  stopTimer(); runId++; S=null; loadCfg(); ensureProg();
+  stopTimer(); runId++; S=null; loadCfg(); ensureProg().then(applyTheme);
   const par=isParent&&store.kind==='cloud';
   render(`<div class="hdr"><h1>${esc(me.name)}</h1><button class="ghost" data-act="logout">${store.kind==='cloud'?'ログアウト':'ひとを変える'}</button></div>
-    <div class="card" id="daily" style="min-height:62px;margin-bottom:12px"></div>
+    <div class="card" id="daily" style="min-height:96px;margin-bottom:12px"></div>
     <div class="cols3${par?' cols4':''}">
       <button class="pri" data-act="settings" data-m="calc"><i>⚡</i>計算ダッシュ<small>パッパッと計算</small></button>
       <button class="pri" data-act="settings" data-m="flash"><i>👀</i>フラッシュ暗算<small>数字を見て合計</small></button>
@@ -377,14 +448,26 @@ function goHome(){
   fillDaily();
 }
 async function fillDaily(){
-  let list=[]; try{list=await store.load(me.id,200)}catch(e){}
+  await ensureProg();
   const el=$('#daily'); if(!el||curScreen!=='home') return;
-  const t0=new Date(); t0.setHours(0,0,0,0);
-  const n=list.filter(x=>x.ts>=t0.getTime()).reduce((a,x)=>a+x.n,0), pc=Math.min(100,Math.round(n/DAILY_GOAL*100));
-  el.innerHTML=`きょう <b style="font-size:22px">${n}</b> 問 <span class="note">/ 目標 ${DAILY_GOAL}問 ${n>=DAILY_GOAL?'🎉 たっせい！':''}</span>
-    <div style="height:10px;background:#d9deea;border-radius:5px;margin-top:6px"><div style="height:10px;width:${pc}%;background:${n>=DAILY_GOAL?'#1a9b4a':'#2f6bff'};border-radius:5px"></div></div>`;
+  const td=dstr(new Date()), P=PROG, n=P.today?.d===td?P.today.n:0, pc=Math.min(100,Math.round(n/DAILY_GOAL*100));
+  const f=charStage(P.total||0), nx=CHAR[f+1], col=THEMES[P.theme]||THEMES.blue;
+  const stk=P.streak.last&&dayDiff(P.streak.last,td)<=2?P.streak.n:0;
+  el.innerHTML=`<div class="row" style="gap:16px;flex-wrap:nowrap">
+    <div style="width:78px;height:78px;flex:none">${charSVG(f,col)}</div>
+    <div class="sp"><div>${esc(CHAR[f].name)}　きょう <b style="font-size:22px">${n}</b> 問 <span class="note">/ 目標 ${DAILY_GOAL}問 ${n>=DAILY_GOAL?'🎉 たっせい！':''}</span>${stk?`　<b style="color:#e8730c">🔥 ${stk}日れんぞく</b>`:''}</div>
+      <div style="height:10px;background:#d9deea;border-radius:5px;margin-top:6px"><div style="height:10px;width:${pc}%;background:${n>=DAILY_GOAL?'#1a9b4a':'var(--pri)'};border-radius:5px"></div></div>
+      <div class="note">${nx?`しんかまで あと ${nx.at-(P.total||0)}問 せいかい`:'さいごまで しんかしたよ！'}</div></div>
+    <div class="row" style="gap:8px;flex:none">${Object.entries(THEMES).map(([k,c])=>`<button class="dot ${P.theme===k?'on':''}" style="background:${c}" data-act="theme" data-v="${k}"></button>`).join('')}</div></div>`;
 }
 const chip=(m,k,v,label,on)=>`<button class="chip ${on?'on':''}" data-act="cfg" data-m="${m}" data-k="${k}" data-v="${v}">${label}</button>`;
+let showNames=false;
+function lvMap(o,cur){
+  return `<div class="map">${CURR[o].map((x,i)=>{
+    const s=i+1, a=PROG.mast?.[o+':'+s], c=!a||a.n<5?'':a.k/a.n>=0.9?'ok':a.k/a.n<0.7?'ng':'';
+    return `<button class="node ${s===cur?'cur':s<cur?'past':''} ${c}" data-act="stage" data-op="${o}" data-v="${s}">${s}<i>${s===cur?'📍':c==='ok'?'⭐':c==='ng'?'！':''}</i></button>`;
+  }).join('')}</div>`;
+}
 function showSettings(m){
   const c=CFG[m], grp=(t,inner)=>`<div class="opt"><h2>${t}</h2><div class="row">${inner}</div></div>`;
   const autoChips=chip(m,'auto','true','おまかせ',c.auto)+chip(m,'auto','false','じぶんで決める',!c.auto);
@@ -400,8 +483,10 @@ function showSettings(m){
     else {
       const o=ops[0];
       lvBlock=grp('むずかしさ',autoChips)
-        +grp('レベル',CURR[o].map((x,i)=>`<button class="chip ${lv[o]===i+1?'on':''}" style="font-size:15px;padding:9px 12px" data-act="stage" data-op="${o}" data-v="${i+1}">Lv${i+1}　${x.n}</button>`).join(''))
-        +`<p class="note" style="${ind}">${auto?'いまのレベルに色がついています。正答率に合わせて自動で上下します。タップすると、そこからスタートできます。':'選んだレベルだけを練習します（自動では変わりません）。'}</p>`;
+        +grp('レベル',`<div style="flex:1">${lvMap(o,lv[o])}</div>`)
+        +`<p class="note" style="${ind}">📍いま　⭐とくい（9割以上）　！にがて（7割未満）。${auto?'正答率に合わせて自動で上下します。タップすると、そこからスタートできます。':'選んだレベルだけを練習します（自動では変わりません）。'}</p>`
+        +`<p style="${ind}"><button class="ghost" data-act="names">${showNames?'▲ レベルの名前をとじる':'▼ レベルの名前を見る'}</button></p>`
+        +(showNames?`<div style="margin:0 0 12px 134px">${CURR[o].map((x,i)=>`<div class="note" style="font-size:14px;${lv[o]===i+1?'font-weight:700;color:var(--pri)':''}">Lv${i+1}　${esc(x.n)}</div>`).join('')}</div>`:'');
     }
     opts=grp('しゅるい',Object.keys(SEL).map(k=>`<button class="chip ${c.op===k?'on':''}" data-act="cfg" data-m="calc" data-k="op" data-v="${k}">${SELN[k]}</button>`).join(''))
       +lvBlock
@@ -428,16 +513,17 @@ function showSettings(m){
 }
 function renderPlay(){
   render(`<div class="play">
-    <div class="top"><span id="prog"></span><span class="sp"></span><button class="ghost" data-act="home">やめる</button></div>
+    <div class="top"><span id="prog"></span><span id="combo"></span><span class="sp"></span><button class="ghost" data-act="home">やめる</button></div>
     <div class="main"><div id="q"></div><div id="inp"></div><div id="fb"></div></div>
     <div class="pad">${[7,8,9,4,5,6,1,2,3].map(n=>`<button data-key="${n}">${n}</button>`).join('')}
       <button class="k2" data-key="back">⌫</button><button data-key="0">0</button><button class="k2" data-key="ok">OK</button></div>
   </div>`);
 }
+const setCombo=()=>{const c=$('#combo');if(c)c.textContent=S&&S.combo>=3?`🔥 ${S.combo}れんぞく`:''};
 const setProg=()=>{
   const p=$('#prog'); if(!p||!S) return;
   if(S.cfg.sec){ const left=Math.max(0,Math.ceil((S.deadline-Date.now())/1000));
-    p.textContent=`残り ${Math.floor(left/60)}:${String(left%60).padStart(2,'0')} ・ ${S.res.length}問`; }
+    p.textContent=`残り ${Math.floor(left/60)}:${String(left%60).padStart(2,'0')} ・ ${S.res.filter(r=>r.k).length}問正解${S.bestV?` （ベスト ${S.bestV}問）`:''}`; }
   else p.textContent=`${Math.min(S.i+1,S.cfg.n)} / ${S.cfg.n}`;
 };
 const stopTimer=()=>{ if(S&&S.timer){clearInterval(S.timer);S.timer=null} };
@@ -455,8 +541,9 @@ function startSession(m){
   const cfg=JSON.parse(JSON.stringify(CFG[m]));
   if(m==='calc'){ const x=calcLv(cfg); cfg.ops=x.ops; cfg.auto=x.auto; cfg.lv=x.lv; }
   else if(cfg.auto){ const L=FL[Math.min(FL.length-1,Math.max(0,PROG.auto.flash.i))]; cfg.digits=L[0]; cfg.count=L[1]; cfg.ms=L[2]; }
-  S={mode:m,cfg,i:0,res:[],accepting:false,input:'',cur:null,t0:0,retry:[],rvSeen:new Set(),rvUsed:0,
+  S={mode:m,cfg,combo:0,maxCombo:0,i:0,res:[],accepting:false,input:'',cur:null,t0:0,retry:[],rvSeen:new Set(),rvUsed:0,
      review:m==='calc'?PROG.review.filter(x=>cfg.ops.includes(x.o)):[]};
+  if(m==='calc') S.bestV=PROG.best[bestKey(cfg)]?.v;
   renderPlay();
   if(m==='calc'&&cfg.sec){
     S.deadline=Date.now()+cfg.sec*1000;
@@ -520,7 +607,7 @@ function submit(){
   const fb=$('#fb');
   fb.className=ok?'good':'bad'; fb.textContent=ok?'✓':`✗ 正解 ${aT}`;
   S.res.push({o:S.mode==='calc'?c.op:'f',s:c.s,k:ok?1:0,m:ms,q:c.text,a:aT,A:c.ans,E:c.rem,g:gT,rv:c.rv});
-  S.i++;
+  S.i++; S.combo=ok?S.combo+1:0; S.maxCombo=Math.max(S.maxCombo,S.combo); setCombo();
   if(S.mode==='calc'&&!ok&&S.cur.rv!=='retry') S.retry.push({at:S.i+3,item:{op:S.cur.op,ans:S.cur.ans,rem:S.cur.rem,text:S.cur.text,s:S.cur.s}});
   if(S.mode==='calc') nextQ();
   else setTimeout(()=>{ if(S) nextQ(); }, ok?250:1300);
@@ -592,7 +679,7 @@ function dayBars(list){
   for(let i=13;i>=0;i--){const d=new Date(t0);d.setDate(d.getDate()-i);days.push({from:d.getTime(),to:d.getTime()+864e5,n:0,label:`${d.getMonth()+1}/${d.getDate()}`})}
   list.forEach(s=>{const d=days.find(x=>s.ts>=x.from&&s.ts<x.to);if(d)d.n+=s.n});
   const max=Math.max(1,...days.map(d=>d.n));
-  return `<div style="display:flex;align-items:flex-end;gap:5px;height:110px">${days.map(d=>`<div style="flex:1;text-align:center"><div style="font-size:11px;color:#6b7691">${d.n||''}</div><div style="background:${d.n?'#2f6bff':'#d9deea'};height:${d.n?Math.max(4,Math.round(d.n/max*70)):3}px"></div></div>`).join('')}</div>
+  return `<div style="display:flex;align-items:flex-end;gap:5px;height:110px">${days.map(d=>`<div style="flex:1;text-align:center"><div style="font-size:11px;color:#6b7691">${d.n||''}</div><div style="background:${d.n?'var(--pri)':'#d9deea'};height:${d.n?Math.max(4,Math.round(d.n/max*70)):3}px"></div></div>`).join('')}</div>
     <div style="display:flex;gap:5px">${days.map(d=>`<div style="flex:1;text-align:center;font-size:10px;color:#6b7691">${d.label}</div>`).join('')}</div>`;
 }
 async function showParent(pid){
@@ -635,6 +722,8 @@ const acts={
     else c[d.k]=d.v==='true'?true:d.v==='false'?false:+d.v;
     saveCfg(); showSettings(d.m);
   },
+  theme:d=>{ PROG.theme=d.v; applyTheme(); saveProg(); fillDaily(); },
+  names:()=>{ showNames=!showNames; showSettings('calc'); },
   stage:d=>{
     const c=CFG.calc;
     if(calcLv(c).auto){ PROG.auto.calc.lv[d.op]=+d.v; PROG.auto.calc.up[d.op]=0; saveProg(); }
