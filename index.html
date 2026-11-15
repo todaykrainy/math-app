@@ -234,7 +234,7 @@ let store=null, me=null, S=null, runId=0, CFG=null;
 let isParent=false, curScreen='', PROFILES=[], parentTk=0;
 const DEFAULT_CFG={
   calc:{op:'add',st:{add:3,sub:3,mul:2,div:2},n:20,sec:0,auto:true},
-  flash:{digits:1,count:4,ms:1000,sign:false,n:10,auto:true}
+  flash:{digits:1,count:4,ms:1000,sign:false,n:10,auto:true,sound:true}
 };
 const DAILY_GOAL=100;
 const SEL={add:['add'],sub:['sub'],mul:['mul'],div:['div'],mixA:['add','sub'],mixM:['mul','div'],mix:['add','sub','mul','div']};
@@ -267,6 +267,17 @@ function charSVG(f,col){
   if(f>=5) g+=`<path d="M82 24l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" fill="#f5c400"/>`;
   return `<svg viewBox="0 0 100 100">${g}</svg>`;
 }
+/* ---- 効果音（Web Audio。ファイル不要） ---- */
+let AC=null;
+function audioInit(){ try{ AC??=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); }catch(e){} }
+function beep(freq,dur,vol,type='square',at=0){
+  if(!CFG?.flash?.sound||!AC) return;
+  try{ const t=AC.currentTime+at, o=AC.createOscillator(), g=AC.createGain();
+    o.type=type; o.frequency.value=freq; g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+dur+0.02); }catch(e){}
+}
+const tick=neg=>beep(neg?640:1100,0.07,0.16);              // 数字が出るたび「ピッ」（引く数は低め）
+const chime=()=>{ beep(880,0.12,0.18,'triangle'); beep(1320,0.22,0.18,'triangle',0.11); }; // 答えを入れる合図
 const dstr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const dayDiff=(a,b)=>Math.round((Date.parse(b)-Date.parse(a))/864e5);
 function applyTheme(){
@@ -507,6 +518,7 @@ function showSettings(m){
           +grp('数字の個数',[3,4,5,7,10].map(n=>chip(m,'count',n,n+'こ',c.count===n)).join(''))
           +grp('1こを見せる時間',[1500,1000,700,500,300].map(n=>chip(m,'ms',n,(n/1000)+'秒',c.ms===n)).join('')))
       +grp('けいさん',chip(m,'sign','false','たしのみ',!c.sign)+chip(m,'sign','true','たし＆ひき',c.sign))
+      +grp('こうかおん',chip(m,'sound','true','ON 🔊',c.sound!==false)+chip(m,'sound','false','OFF 🔇',c.sound===false))
       +grp('もんだい数',[5,10].map(n=>chip(m,'n',n,n+'問',c.n===n)).join(''));
     const d=c.auto?{digits:L[0],count:L[1],ms:L[2]}:c;
     side=`<div class="note">せってい</div><div style="font-size:22px;text-align:center;line-height:1.7;margin:8px 0">${d.digits}けた × ${d.count}こ<br>${d.ms/1000}秒ずつ<br>${c.sign?'たし＆ひき':'たしのみ'}</div>`;
@@ -584,11 +596,11 @@ async function flashSeq(){
   await sleep(350); if(my!==runId)return;
   $('#fb').textContent='';
   for(let i=0;i<g.nums.length;i++){
-    $('#q').textContent=fmtFlash(g.nums[i],i,c.sign);
+    $('#q').textContent=fmtFlash(g.nums[i],i,c.sign); tick(c.sign&&i>0&&g.nums[i]<0);
     await sleep(c.ms); if(my!==runId)return;
     $('#q').textContent=''; await sleep(90); if(my!==runId)return;
   }
-  $('#q').textContent='？'; S.input=''; S.accepting=true; S.t0=performance.now(); renderInp();
+  chime(); $('#q').textContent='？'; S.input=''; S.accepting=true; S.t0=performance.now(); renderInp();
 }
 function advance(){
   if(hasRem(S.cur)&&S.ph===0){ S.q1=S.input; S.input=''; S.ph=1; renderInp(); }
@@ -741,8 +753,8 @@ const acts={
     else { (c.st??={})[d.op]=+d.v; saveCfg(); }
     showSettings('calc');
   },
-  start:async d=>{await ensureProg();startSession(d.m)},
-  flashGo:()=>nextQ(),
+  start:async d=>{audioInit();await ensureProg();startSession(d.m)},
+  flashGo:()=>{audioInit();nextQ()},
   history:()=>showHistory(),
   parent:()=>showParent(PROFILES.find(p=>p.id!==me.id)?.id),
   child:d=>showParent(d.id)
