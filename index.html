@@ -32,6 +32,8 @@ th{background:#eef1f7;font-size:14px;color:#4a5570}
 .hdr{display:flex;align-items:center;gap:12px;margin-bottom:12px}
 .hdr h1{flex:1}
 .cols3{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:18px;min-height:0;padding-bottom:6px}
+.cols2{grid-template-columns:repeat(2,1fr)}
+.cols4{grid-template-columns:repeat(4,1fr)}
 .cols3>button,.cell>button.pri{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:30px;font-weight:700;border-radius:24px}
 .cols3>button i{font-style:normal;font-size:72px;line-height:1}
 .cols3>button small{font-size:16px;font-weight:400;opacity:.85}
@@ -59,7 +61,7 @@ th{background:#eef1f7;font-size:14px;color:#4a5570}
 .pad button.k2{background:#e4e9f5;font-size:clamp(24px,5vh,38px)}
 @media (orientation:portrait){
   .rot{display:block}
-  .cols3,.split,.split2{grid-template-columns:1fr;overflow:auto}
+  .cols3,.cols2,.cols4,.split,.split2{grid-template-columns:1fr;overflow:auto}
   .cols3{grid-auto-rows:minmax(130px,1fr)}
   .col{overflow:visible}
   .play{display:flex;flex-direction:column}
@@ -137,6 +139,7 @@ function genFlash(c){
 
 /* ---- 状態 ---- */
 let store=null, me=null, S=null, runId=0, CFG=null;
+let isParent=false, curScreen='', PROFILES=[], parentTk=0;
 const DEFAULT_CFG={
   calc:{level:2,ops:['add','sub'],n:10},
   flash:{digits:1,count:4,ms:1000,sign:false,n:10}
@@ -144,7 +147,7 @@ const DEFAULT_CFG={
 const loadCfg=()=>{CFG=lsJSON('fa_cfg_'+me.id,null)||JSON.parse(JSON.stringify(DEFAULT_CFG));
   for(const k in DEFAULT_CFG) CFG[k]={...DEFAULT_CFG[k],...CFG[k]};};
 const saveCfg=()=>lsSet('fa_cfg_'+me.id,JSON.stringify(CFG));
-const render=h=>{$('#app').innerHTML=h};
+const render=(h,name='other')=>{curScreen=name;$('#app').innerHTML=h};
 function toast(t){const d=document.createElement('div');d.id='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),3500)}
 
 /* ---- ストア：端末内 ---- */
@@ -176,14 +179,21 @@ async function initCloud(){
     },
     signOut:()=>Au.signOut(auth),
     save:(uid,s)=>Fs.addDoc(Fs.collection(db,'users',uid,'sessions'),s),
-    async load(uid){
-      const q=Fs.query(Fs.collection(db,'users',uid,'sessions'),Fs.orderBy('ts','desc'),Fs.limit(100));
+    async load(uid,lim=100){
+      const q=Fs.query(Fs.collection(db,'users',uid,'sessions'),Fs.orderBy('ts','desc'),Fs.limit(lim));
       return (await Fs.getDocs(q)).docs.map(x=>x.data());
-    }
+    },
+    touchProfile:u=>Fs.setDoc(Fs.doc(db,'profiles',u.id),{name:u.name,email:u.email,updated:Date.now()},{merge:true}),
+    async listProfiles(){ return (await Fs.getDocs(Fs.collection(db,'profiles'))).docs.map(d=>({id:d.id,...d.data()})); }
   };
   Au.onAuthStateChanged(auth,u=>{
-    me=u?{id:u.uid,name:u.displayName||u.email||'ゲスト'}:null;
-    me?goHome():showLogin();
+    me=u?{id:u.uid,name:u.displayName||u.email||'ゲスト',email:u.email||''}:null;
+    isParent=false; PROFILES=[];
+    if(!me){showLogin();return}
+    goHome();
+    store.touchProfile(me).catch(()=>{});
+    // 親だけが一覧を読める（ルールで制御）。読めたら親用ビューを表示
+    store.listProfiles().then(l=>{isParent=true;PROFILES=l;if(curScreen==='home')goHome()}).catch(()=>{});
   });
 }
 
@@ -196,19 +206,21 @@ function showLogin(){
       <button class="ghost" data-act="forceLocal">ログインせず この端末だけで使う</button></div>`);
   } else {
     render(`<div class="hdr"><h1>だれがやる？</h1>${FIREBASE_CONFIG?`<button class="ghost" data-act="useCloud">Googleログインにもどす</button>`:''}</div>
-      <div class="cols3" style="grid-template-columns:repeat(2,1fr)">
+      <div class="cols3 cols2">
       ${store.profiles().map(p=>`<div class="cell"><button class="pri" data-act="pickUser" data-id="${p.id}">${esc(p.name)}</button><button class="ghost" data-act="rename" data-id="${p.id}">なまえ変更</button></div>`).join('')}
       </div><p class="note">この端末のブラウザに記録が保存されます。</p>`);
   }
 }
 function goHome(){
   runId++; S=null; loadCfg();
+  const par=isParent&&store.kind==='cloud';
   render(`<div class="hdr"><h1>${esc(me.name)}</h1><button class="ghost" data-act="logout">${store.kind==='cloud'?'ログアウト':'ひとを変える'}</button></div>
-    <div class="cols3">
+    <div class="cols3${par?' cols4':''}">
       <button class="pri" data-act="settings" data-m="calc"><i>⚡</i>計算ダッシュ<small>パッパッと計算</small></button>
       <button class="pri" data-act="settings" data-m="flash"><i>👀</i>フラッシュ暗算<small>数字を見て合計</small></button>
       <button data-act="history"><i>📊</i>きろく<small>せいせきを見る</small></button>
-    </div>`);
+      ${par?`<button data-act="parent"><i>👪</i>親用ビュー<small>こどもの記録</small></button>`:''}
+    </div>`,'home');
 }
 const chip=(m,k,v,label,on)=>`<button class="chip ${on?'on':''}" data-act="cfg" data-m="${m}" data-k="${k}" data-v="${v}">${label}</button>`;
 function showSettings(m){
@@ -322,11 +334,7 @@ const fmtDate=ts=>{const d=new Date(ts),p=n=>String(n).padStart(2,'0');return `$
 const cfgLabel=s=>s.mode==='calc'
   ? `計算 Lv${s.cfg.level} ${s.cfg.ops.map(o=>OPS[o]).join('')}`
   : `フラッシュ ${s.cfg.digits}けた×${s.cfg.count}こ ${s.cfg.ms/1000}秒${s.cfg.sign?' ±':''}`;
-async function showHistory(){
-  const hdr=`<div class="hdr"><button class="ghost" data-act="home">← もどる</button><h1>📊 きろく</h1></div>`;
-  render(hdr+`<p>よみこみ中…</p>`);
-  let list=[]; try{list=await store.load(me.id)}catch(e){toast('きろくを読み込めませんでした')}
-  if(!list.length){ render(hdr+'<p>まだ記録がありません。</p>'); return; }
+function histParts(list){
   const agg={};
   list.filter(s=>s.mode==='calc'&&s.r).forEach(s=>s.r.forEach(r=>{const a=agg[r.o]??={n:0,k:0,m:0};a.n++;a.k+=r.k;a.m+=r.m}));
   const ops=Object.keys(agg);
@@ -338,7 +346,49 @@ async function showHistory(){
     return `<div class="card row"><span style="width:92px;color:#6b7691">${fmtDate(s.ts)}</span><span class="sp">${esc(cfgLabel(s))}</span>
       <b class="${p>=90?'good':p<70?'bad':''}" style="width:70px;text-align:right">${s.correct}/${s.n}</b>
       <span style="width:58px;text-align:right;color:#6b7691">${s.mode==='calc'?(s.ms/s.n/1000).toFixed(1)+'秒':''}</span></div>`}).join('');
+  return {left,right};
+}
+async function showHistory(){
+  const hdr=`<div class="hdr"><button class="ghost" data-act="home">← もどる</button><h1>📊 きろく</h1></div>`;
+  render(hdr+`<p>よみこみ中…</p>`);
+  let list=[]; try{list=await store.load(me.id)}catch(e){toast('きろくを読み込めませんでした')}
+  if(!list.length){ render(hdr+'<p>まだ記録がありません。</p>'); return; }
+  const {left,right}=histParts(list);
   render(hdr+`<div class="split2"><div class="col">${left}</div><div class="col">${right}</div></div>`);
+}
+
+/* ---- 親用ビュー ---- */
+const pct=(k,n)=>n?Math.round(k/n*100)+'%':'—';
+const sumFrom=(list,from)=>{const a=list.filter(s=>s.ts>=from);return {c:a.length,n:a.reduce((x,s)=>x+s.n,0),k:a.reduce((x,s)=>x+s.correct,0)}};
+function dayBars(list){
+  const t0=new Date(); t0.setHours(0,0,0,0); const days=[];
+  for(let i=13;i>=0;i--){const d=new Date(t0);d.setDate(d.getDate()-i);days.push({from:d.getTime(),to:d.getTime()+864e5,n:0,label:`${d.getMonth()+1}/${d.getDate()}`})}
+  list.forEach(s=>{const d=days.find(x=>s.ts>=x.from&&s.ts<x.to);if(d)d.n+=s.n});
+  const max=Math.max(1,...days.map(d=>d.n));
+  return `<div style="display:flex;align-items:flex-end;gap:5px;height:110px">${days.map(d=>`<div style="flex:1;text-align:center"><div style="font-size:11px;color:#6b7691">${d.n||''}</div><div style="background:${d.n?'#2f6bff':'#d9deea'};height:${d.n?Math.max(4,Math.round(d.n/max*70)):3}px"></div></div>`).join('')}</div>
+    <div style="display:flex;gap:5px">${days.map(d=>`<div style="flex:1;text-align:center;font-size:10px;color:#6b7691">${d.label}</div>`).join('')}</div>`;
+}
+async function showParent(pid){
+  const tk=++parentTk;
+  const hdr=`<div class="hdr"><button class="ghost" data-act="home">← もどる</button><h1>👪 親用ビュー</h1></div>`;
+  const profs=PROFILES.slice().sort((a,b)=>String(a.name||a.email).localeCompare(String(b.name||b.email),'ja'));
+  if(!profs.length){render(hdr+'<p>まだ誰もログインしていません。</p>');return}
+  const cur=profs.find(p=>p.id===pid)||profs[0];
+  const chips=`<div class="row">${profs.map(p=>`<button class="chip ${p.id===cur.id?'on':''}" data-act="child" data-id="${esc(p.id)}">${esc(p.name||p.email)}</button>`).join('')}</div><p class="note">${esc(cur.email||'')}</p>`;
+  render(hdr+chips+`<p>よみこみ中…</p>`);
+  let list=[]; try{list=await store.load(cur.id,200)}catch(e){toast('記録を読み込めませんでした')}
+  if(tk!==parentTk) return;
+  if(!list.length){ render(hdr+chips+'<p>まだ記録がありません。</p>'); return; }
+  const t0=new Date(); t0.setHours(0,0,0,0);
+  const today=sumFrom(list,t0.getTime()), wk=sumFrom(list,t0.getTime()-6*864e5);
+  const {left,right}=histParts(list);
+  const card=(t,x)=>`<div class="card sp"><div class="note" style="margin:0">${t}</div><b style="font-size:22px">${x.c}回・${x.n}問</b><div>正答率 <b>${pct(x.k,x.n)}</b></div></div>`;
+  render(hdr+chips+`<div class="split2"><div class="col">
+      <div class="row" style="gap:10px">${card('きょう',today)}${card('直近7日',wk)}</div>
+      <h2>練習した問題数（14日間）</h2>${dayBars(list)}
+      <div style="margin-top:14px">${left}</div>
+      <p class="note">最後の練習：${fmtDate(list[0].ts)}</p>
+    </div><div class="col">${right}</div></div>`);
 }
 
 /* ---- イベント ---- */
@@ -359,7 +409,9 @@ const acts={
   },
   start:d=>startSession(d.m),
   flashGo:()=>nextQ(),
-  history:()=>showHistory()
+  history:()=>showHistory(),
+  parent:()=>showParent(PROFILES.find(p=>p.id!==me.id)?.id),
+  child:d=>showParent(d.id)
 };
 $('#app').addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b)acts[b.dataset.act]?.(b.dataset)});
 $('#app').addEventListener('pointerdown',e=>{const b=e.target.closest('[data-key]');if(b){e.preventDefault();press(b.dataset.key)}});

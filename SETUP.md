@@ -12,18 +12,41 @@ Googleログインで子どもを判別したい場合は、以下を行って�
 5. `index.html` の `const FIREBASE_CONFIG = null;` をコピーした内容に置き換える
 
 ## 2. Firestoreルール
-「Firestore → ルール」に貼り付けて公開：
+「Firestore → ルール」に貼り付けて公開します。
+メールアドレスはこのリポジトリ（公開）には書かず、Firebase管理画面にだけ書いてください。
+`PARENT_EMAIL_*` と `CHILD_EMAIL_*` は実際のGoogleアカウントに置き換えます。
 
 ```
 rules_version = '2';
 service cloud.firestore {
-  match /databases/{db}/documents {
-    match /users/{uid}/sessions/{id} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+  match /databases/{database}/documents {
+    function verified() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function isParent() {
+      return verified() && request.auth.token.email in ['PARENT_EMAIL_1', 'PARENT_EMAIL_2'];
+    }
+    function allowed() {
+      return isParent() || (verified() && request.auth.token.email in ['CHILD_EMAIL_1', 'CHILD_EMAIL_2']);
+    }
+    match /users/{uid}/sessions/{sessionId} {
+      allow create: if allowed() && request.auth.uid == uid;
+      allow read: if (allowed() && request.auth.uid == uid) || isParent();
+      allow update, delete: if false;
+    }
+    match /profiles/{uid} {
+      allow create, update: if allowed() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'email', 'updated'])
+        && request.resource.data.email == request.auth.token.email;
+      allow get: if (allowed() && request.auth.uid == uid) || isParent();
+      allow list: if isParent();
+      allow delete: if false;
     }
   }
 }
 ```
+
+親用ビュー: 親のアカウントでログインすると、ホームに「親用ビュー」が出ます（`profiles` の一覧を読めるのは親だけです）。
 
 ## 3. 公開（Firebase Hosting）
 ```
@@ -32,7 +55,7 @@ firebase login
 firebase init hosting   # public ディレクトリに index.html を置く / SPA設定は No
 firebase deploy
 ```
-公開URLのドメインは Authentication の「承認済みドメイン」に自動で入ります。
+GitHub Pagesで公開する場合は、Authentication →「設定」→「承認済みドメイン」に `ユーザー名.github.io` を追加します。
 
 ## 4. タブレット／Chromebookで使う
 公開URLをChromeで開き、メニューから「ホーム画面に追加」（Chromebookは「インストール」）。
