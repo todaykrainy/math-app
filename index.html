@@ -111,6 +111,7 @@ const rd=d=>d===1?rnd(1,9):rnd(10**(d-1),10**d-1);
 const mk=(da,db,ok)=>()=>until(()=>[rd(da),rd(db)],v=>ok(v[0],v[1]));
 const kuku=ds=>()=>[pick(ds),rnd(1,9)];
 const dv=(d,q)=>[d*q,d];
+const dvr=(d,q)=>[d*q+rnd(1,d-1),d];
 const digitsLE=(q,m,d)=>{for(let i=0;i<m;i++)if(dg(q,i)*d>=10)return false;return true};
 // 計算のカリキュラム：各レベルが「ひとつのつまづきポイント」だけを練習するように分けてある
 // g()は[左,右]を返す（わり算は[わられる数,わる数]）。sw:1は左右を入れ替えて出すことがある
@@ -173,14 +174,19 @@ const CURR={
     {n:'九九のぎゃく（6・9の段）',g:()=>dv(pick([6,9]),rnd(1,9))},
     {n:'九九のぎゃく（7・8の段）',g:()=>dv(pick([7,8]),rnd(1,9))},
     {n:'九九のぎゃく ぜんぶ（ばらばら）',g:()=>dv(rnd(2,9),rnd(2,9))},
+    {n:'あまりのあるわり算（九九の範囲 17÷5）',rm:1,g:()=>dvr(rnd(2,9),rnd(1,9))},
     {n:'0や1・同じ数でわる（0÷5、7÷1、8÷8）',g:()=>{const t=rnd(0,2),x=rnd(2,9);return t===0?[0,x]:t===1?[x,1]:[x,x]}},
     {n:'10の倍数÷1けた（60÷3）',g:()=>until(()=>dv(rnd(2,9),rnd(1,9)*10),v=>v[0]<100)},
     {n:'2けた÷1けた（十の位からわれる 84÷4）',g:()=>{const d=rnd(2,4),m=Math.floor(9/d);return dv(d,rnd(1,m)*10+rnd(1,m))}},
     {n:'2けた÷1けた（十の位があまる 52÷4）',g:()=>{const d=rnd(3,9);return [until(()=>rnd(20,99),a=>a%d===0&&dg(a,1)%d!==0),d]}},
+    {n:'2けた÷1けた（あまりあり 85÷4）',rm:1,g:()=>{const d=rnd(2,9);return [until(()=>rnd(20,99),a=>a%d!==0),d]}},
     {n:'3けた÷1けた（くり下がりなし）',g:()=>{const d=rnd(2,3);return dv(d,until(()=>rnd(111,333),q=>dg(q,0)>0&&dg(q,1)>0&&digitsLE(q,3,d)))}},
     {n:'3けた÷1けた（わりきれる）',g:()=>{const d=rnd(2,9);return [until(()=>rnd(100,999),a=>a%d===0),d]}},
+    {n:'3けた÷1けた（あまりあり）',rm:1,g:()=>{const d=rnd(2,9);return [until(()=>rnd(100,999),a=>a%d!==0),d]}},
     {n:'2〜3けた÷2けた（わりきれる）',g:()=>dv(rnd(11,19),rnd(2,9))},
-    {n:'3〜4けた÷2けた',g:()=>dv(rnd(11,30),rnd(10,40))}
+    {n:'2〜3けた÷2けた（あまりあり 87÷12）',rm:1,g:()=>dvr(rnd(11,30),rnd(2,9))},
+    {n:'3〜4けた÷2けた',g:()=>dv(rnd(11,30),rnd(10,40))},
+    {n:'3〜4けた÷2けた（あまりあり）',rm:1,g:()=>dvr(rnd(11,30),rnd(10,40))}
   ]
 };
 const NST=op=>CURR[op].length;
@@ -188,8 +194,10 @@ function genCalc(c){
   const op=pick(c.ops), n=NST(op), L=Math.min(n,Math.max(1,(c.lv&&c.lv[op])||1)), st=CURR[op][L-1];
   let [a,b]=st.g();
   if(st.sw&&Math.random()<.45)[a,b]=[b,a];
-  const ans=op==='add'?a+b:op==='sub'?a-b:op==='mul'?a*b:a/b;
-  return {op,ans,text:`${a} ${OPS[op]} ${b}`,s:L};
+  const ans=op==='add'?a+b:op==='sub'?a-b:op==='mul'?a*b:Math.floor(a/b);
+  const o={op,ans,text:`${a} ${OPS[op]} ${b}`,s:L};
+  if(st.rm) o.rem=a%b;
+  return o;
 }
 const DIG={1:[1,9],2:[10,99],3:[100,999]};
 function genFlash(c){
@@ -232,12 +240,15 @@ const saveCfg=()=>lsSet('fa_cfg_'+me.id,JSON.stringify(CFG));
 /* ---- 進捗：復習キューとおまかせレベル ---- */
 let PROG=null, progPromise=null;
 function normProg(p){
-  const d={v:2,review:[],auto:{calc:{lv:{add:3,sub:3,mul:2,div:2},up:{add:0,sub:0,mul:0,div:0}},flash:{i:2,up:0}}};
+  const d={v:3,review:[],auto:{calc:{lv:{add:3,sub:3,mul:2,div:2},up:{add:0,sub:0,mul:0,div:0}},flash:{i:2,up:0}}};
   if(!p||typeof p!=='object') return d;
-  const a=p.auto||{}, old=p.v!==2; // v2より前は5段階のレベルだったので、計算レベルだけ初期化する
+  const a=p.auto||{}, old=!(p.v>=2); // v2より前は5段階だったので、計算レベルを初期化する
+  const DM=[0,1,2,3,4,5,7,8,9,10,12,13,15,17]; // v2→v3：わり算にあまりのレベルを挿入したので番号を移す
+  const mig=p.v===2;
   const lv={...d.auto.calc.lv}, up={...d.auto.calc.up};
-  if(!old) for(const o in lv){ const x=+a.calc?.lv?.[o]; if(x>=1) lv[o]=Math.min(NST(o),Math.floor(x)); up[o]=+a.calc?.up?.[o]||0; }
-  return {v:2,review:Array.isArray(p.review)?p.review.slice(0,30):[],
+  if(!old) for(const o in lv){ let x=Math.floor(+a.calc?.lv?.[o]); if(x>=1){ if(mig&&o==='div') x=DM[Math.min(x,13)]; lv[o]=Math.min(NST(o),x); } up[o]=+a.calc?.up?.[o]||0; }
+  const rv=(Array.isArray(p.review)?p.review:[]).slice(0,30).map(x=>mig&&x.o==='div'&&x.s?{...x,s:DM[Math.min(x.s,13)]}:x);
+  return {v:3,review:rv,
     auto:{calc:{lv,up},flash:{...d.auto.flash,...(a.flash||{})}}};
 }
 async function loadProg(){
@@ -258,7 +269,7 @@ function applyProgress(st){
       if(r.rv==='retry') return;
       const i=q.findIndex(x=>x.t===r.q);
       if(r.rv==='queue'){ if(i>=0){ if(r.k){ q[i].c++; if(q[i].c>=2) q.splice(i,1); } else q[i].c=0; } }
-      else if(!r.k && i<0) q.push({t:r.q,o:r.o,a:r.a,s:r.s,c:0});
+      else if(!r.k && i<0) q.push({t:r.q,o:r.o,a:r.A,e:r.E,s:r.s,c:0});
     });
     while(q.length>30) q.shift();
     if(st.cfg.auto){
@@ -431,9 +442,11 @@ const setProg=()=>{
 };
 const stopTimer=()=>{ if(S&&S.timer){clearInterval(S.timer);S.timer=null} };
 const fmtFlash=(n,i,sign)=>i===0?String(Math.abs(n)):(sign?(n>=0?'＋':'−'):'')+Math.abs(n);
+const hasRem=c=>c.rem!=null;
 function renderInp(){
-  const len=String(S.cur.ans).length;
-  $('#inp').textContent=S.input+'_'.repeat(Math.max(0,len-S.input.length));
+  const c=S.cur, ph2=hasRem(c)&&S.ph===1, len=String(ph2?c.rem:c.ans).length;
+  const t=S.input+'_'.repeat(Math.max(0,len-S.input.length));
+  $('#inp').textContent=ph2?`${S.q1} あまり ${t}`:hasRem(c)?`${t} あまり □`:t;
 }
 
 /* ---- ゲーム進行 ---- */
@@ -460,7 +473,7 @@ function pickCalc(){
   // 2) 前に間違えた問題の復習（ときどき混ぜる）
   if(S.review.length&&S.rvUsed<5&&Math.random()<0.2){
     const pool=S.review.filter(x=>!S.rvSeen.has(x.t));
-    if(pool.length){ const it=pick(pool); S.rvSeen.add(it.t); S.rvUsed++; return {op:it.o,ans:it.a,text:it.t,s:it.s,rv:'queue'}; }
+    if(pool.length){ const it=pick(pool); S.rvSeen.add(it.t); S.rvUsed++; return {op:it.o,ans:it.a,rem:it.e,text:it.t,s:it.s,rv:'queue'}; }
   }
   return genCalc(S.cfg);
 }
@@ -469,7 +482,7 @@ function nextQ(){
   setProg();
   if(S.mode==='calc'){
     S.cur=pickCalc(); $('#q').textContent=S.cur.text;
-    S.input=''; S.accepting=true; S.t0=performance.now(); renderInp();
+    S.input=''; S.ph=0; S.accepting=true; S.t0=performance.now(); renderInp();
   } else flashSeq();
 }
 async function flashSeq(){
@@ -486,23 +499,29 @@ async function flashSeq(){
   }
   $('#q').textContent='？'; S.input=''; S.accepting=true; S.t0=performance.now(); renderInp();
 }
+function advance(){
+  if(hasRem(S.cur)&&S.ph===0){ S.q1=S.input; S.input=''; S.ph=1; renderInp(); }
+  else submit();
+}
 function press(key){
   if(!S||!S.accepting) return;
-  const len=String(S.cur.ans).length;
+  const c=S.cur, len=String((hasRem(c)&&S.ph===1)?c.rem:c.ans).length;
   if(key==='back') S.input=S.input.slice(0,-1);
-  else if(key==='ok'){ if(S.input) return submit(); return; }
+  else if(key==='ok'){ if(S.input) advance(); return; }
   else if(S.input.length<len) S.input+=key;
   renderInp();
-  if(S.input.length>=len) submit();
+  if(S.input.length>=len) advance();
 }
 function submit(){
   S.accepting=false;
-  const ms=Math.round(performance.now()-S.t0), ok=(+S.input===S.cur.ans);
+  const c=S.cur, rm=hasRem(c), ms=Math.round(performance.now()-S.t0);
+  const ok=rm?(+S.q1===c.ans&&+S.input===c.rem):(+S.input===c.ans);
+  const aT=rm?`${c.ans} あまり ${c.rem}`:c.ans, gT=rm?`${S.q1} あまり ${S.input}`:S.input;
   const fb=$('#fb');
-  fb.className=ok?'good':'bad'; fb.textContent=ok?'✓':`✗ 正解 ${S.cur.ans}`;
-  S.res.push({o:S.mode==='calc'?S.cur.op:'f',s:S.cur.s,k:ok?1:0,m:ms,q:S.cur.text,a:S.cur.ans,g:S.input,rv:S.cur.rv});
+  fb.className=ok?'good':'bad'; fb.textContent=ok?'✓':`✗ 正解 ${aT}`;
+  S.res.push({o:S.mode==='calc'?c.op:'f',s:c.s,k:ok?1:0,m:ms,q:c.text,a:aT,A:c.ans,E:c.rem,g:gT,rv:c.rv});
   S.i++;
-  if(S.mode==='calc'&&!ok&&S.cur.rv!=='retry') S.retry.push({at:S.i+3,item:{op:S.cur.op,ans:S.cur.ans,text:S.cur.text,s:S.cur.s}});
+  if(S.mode==='calc'&&!ok&&S.cur.rv!=='retry') S.retry.push({at:S.i+3,item:{op:S.cur.op,ans:S.cur.ans,rem:S.cur.rem,text:S.cur.text,s:S.cur.s}});
   if(S.mode==='calc') nextQ();
   else setTimeout(()=>{ if(S) nextQ(); }, ok?250:1300);
 }
@@ -511,7 +530,7 @@ function finish(){
   const n=S.res.length;
   if(!n){ toast('時間切れ：もんだいに答えられませんでした'); goHome(); return; }
   const correct=S.res.filter(r=>r.k).length, ms=S.res.reduce((a,r)=>a+r.m,0);
-  const sess={ts:Date.now(),mode:S.mode,cfg:S.cfg,n,correct,ms,
+  const sess={ts:Date.now(),cv:3,mode:S.mode,cfg:S.cfg,n,correct,ms,
     r:S.mode==='calc'?S.res.map(r=>r.s?{o:r.o,s:r.s,k:r.k,m:r.m}:{o:r.o,k:r.k,m:r.m}):undefined};
   if(!sess.r) delete sess.r;
   Promise.resolve(store.save(me.id,sess)).catch(()=>toast('きろくを保存できませんでした'));
@@ -544,7 +563,7 @@ function histParts(list){
     ${ops.map(o=>{const a=agg[o],p=Math.round(a.k/a.n*100);return `<tr><td>${OPS[o]} ${OPN[o]}</td><td>${a.n}</td><td class="${p>=90?'good':p<70?'bad':''}">${p}%</td><td>${(a.m/a.n/1000).toFixed(1)}</td></tr>`}).join('')}</table>`
     :`<p class="note">計算ダッシュの記録がたまると、しゅるい別の成績が出ます。</p>`;
   const stg={};
-  list.filter(s=>s.mode==='calc'&&s.r).forEach(s=>s.r.forEach(r=>{ if(!r.s||!CURR[r.o]) return; const a=stg[r.o+':'+r.s]??={o:r.o,s:r.s,n:0,k:0,m:0};a.n++;a.k+=r.k;a.m+=r.m}));
+  list.filter(s=>s.mode==='calc'&&s.r).forEach(s=>s.r.forEach(r=>{ if(!r.s||!CURR[r.o]||(r.o==='div'&&!(s.cv>=3))) return; const a=stg[r.o+':'+r.s]??={o:r.o,s:r.s,n:0,k:0,m:0};a.n++;a.k+=r.k;a.m+=r.m}));
   const ord=Object.keys(OPS), rows=Object.values(stg).sort((x,y)=>ord.indexOf(x.o)-ord.indexOf(y.o)||x.s-y.s);
   const weak=rows.filter(a=>a.n>=5&&a.k/a.n<0.7).length;
   const left2=rows.length?`<h2>つまづきチェック（レベル別）</h2>${weak?`<p class="note bad">赤いところが、まだ苦手なレベルです。</p>`:''}<table><tr><th></th><th>問題数</th><th>正答率</th><th>平均秒</th></tr>
