@@ -279,7 +279,7 @@ function applyTheme(){
 let PROG=null, progPromise=null;
 function normProg(p){
   const d={v:3,review:[],auto:{calc:{lv:{add:3,sub:3,mul:2,div:2},up:{add:0,sub:0,mul:0,div:0}},flash:{i:2,up:0}}};
-  d.best={};d.mast={};d.streak={last:'',n:0,best:0};d.today=null;d.total=null;d.theme='blue';
+  d.best={};d.mast={};d.cards={have:0,used:0,day:'',today:0};d.streak={last:'',n:0,best:0};d.today=null;d.total=null;d.theme='blue';
   if(!p||typeof p!=='object') return d;
   const a=p.auto||{}, old=!(p.v>=2); // v2より前は5段階だったので、計算レベルを初期化する
   const DM=[0,1,2,3,4,5,7,8,9,10,12,13,15,17]; // v2→v3：わり算にあまりのレベルを挿入したので番号を移す
@@ -287,7 +287,7 @@ function normProg(p){
   const lv={...d.auto.calc.lv}, up={...d.auto.calc.up};
   if(!old) for(const o in lv){ let x=Math.floor(+a.calc?.lv?.[o]); if(x>=1){ if(mig&&o==='div') x=DM[Math.min(x,13)]; lv[o]=Math.min(NST(o),x); } up[o]=+a.calc?.up?.[o]||0; }
   const rv=(Array.isArray(p.review)?p.review:[]).slice(0,30).map(x=>mig&&x.o==='div'&&x.s?{...x,s:DM[Math.min(x.s,13)]}:x);
-  const ex={total:p.total??null,today:p.today||null,streak:{...d.streak,...(p.streak||{})},best:p.best||{},mast:p.mast||{},theme:THEMES[p.theme]?p.theme:'blue'};
+  const ex={cards:{...d.cards,...(p.cards||{})},total:p.total??null,today:p.today||null,streak:{...d.streak,...(p.streak||{})},best:p.best||{},mast:p.mast||{},theme:THEMES[p.theme]?p.theme:'blue'};
   return {v:3,...ex,review:rv,
     auto:{calc:{lv,up},flash:{...d.auto.flash,...(a.flash||{})}}};
 }
@@ -357,9 +357,12 @@ function applyGame(st,msgs){
   if(t0<DAILY_GOAL&&P.today.n>=DAILY_GOAL) msgs.push(`🎉 きょうの目標 ${DAILY_GOAL}問 たっせい！`);
   if(st.mode==='calc'){
     const key=bestKey(st.cfg), timed=!!st.cfg.sec, ms=st.res.reduce((a,r)=>a+r.m,0), old=P.best[key];
-    if(timed){ if(k>0){ if(!old) P.best[key]={v:k}; else if(k>old.v){ msgs.push(`🏆 ベスト更新！ ${k}問（まえのベスト ${old.v}問）`); P.best[key]={v:k}; } } }
+    // ベストをこえたら ごほうびカード（初回は基準づくり／速さは5%以上の更新／1日2まいまで）
+    const C=P.cards; if(C.day!==td){C.day=td;C.today=0}
+    const card=()=>{ if(C.today<2){ C.today++; C.have++; msgs.push(`🎴 ごほうびカード ゲット！（いま ${C.have}まい）`); } };
+    if(timed){ if(k>0){ if(!old) P.best[key]={v:k}; else if(k>old.v){ msgs.push(`🏆 ベスト更新！ ${k}問（まえのベスト ${old.v}問）`); P.best[key]={v:k}; card(); } } }
     else if(n>=5&&k/n>=0.9){ const v=Math.round(ms/n/100)/10;
-      if(!old) P.best[key]={v}; else if(v<old.v){ msgs.push(`🏆 ベスト更新！ 1問 ${v}秒（まえのベスト ${old.v}秒）`); P.best[key]={v}; } }
+      if(!old) P.best[key]={v}; else if(v<old.v){ msgs.push(`🏆 ベスト更新！ 1問 ${v}秒（まえのベスト ${old.v}秒）`); const big=v<=old.v*0.95; P.best[key]={v}; if(big) card(); } }
   }
   if(st.maxCombo>=5) msgs.push(`🔥 さいこう ${st.maxCombo} れんぞく正解`);
 }
@@ -377,7 +380,7 @@ function initLocal(){
     rename(id,name){d.profiles.find(p=>p.id===id).name=name;persist()},
     async save(uid,s){(d.sessions[uid]??=[]).unshift(s);d.sessions[uid]=d.sessions[uid].slice(0,300);persist()},
     async load(uid,lim=100){return (d.sessions[uid]||[]).slice(0,lim)},
-    async loadProgress(){return null},
+    async loadProgress(uid){return lsJSON('fa_prog_'+uid,null)},
     async saveProgress(){},
     signOut(){me=null;resetUser();showLogin()}
   };
@@ -457,6 +460,7 @@ async function fillDaily(){
     <div style="width:78px;height:78px;flex:none">${charSVG(f,col)}</div>
     <div class="sp"><div>${esc(CHAR[f].name)}　きょう <b style="font-size:22px">${n}</b> 問 <span class="note">/ 目標 ${DAILY_GOAL}問 ${n>=DAILY_GOAL?'🎉 たっせい！':''}</span>${stk?`　<b style="color:#e8730c">🔥 ${stk}日れんぞく</b>`:''}</div>
       <div style="height:10px;background:#d9deea;border-radius:5px;margin-top:6px"><div style="height:10px;width:${pc}%;background:${n>=DAILY_GOAL?'#1a9b4a':'var(--pri)'};border-radius:5px"></div></div>
+      <div class="note" style="margin-top:2px">🎴 ごほうびカード <b>${P.cards.have}</b>まい ${P.cards.have>0?`<button class="chip on" style="padding:4px 12px;font-size:14px;margin:0 0 0 8px" data-act="useCard">つかう</button>`:'（ベストをこえるともらえるよ）'}</div>
       <div class="note">${nx?`しんかまで あと ${nx.at-(P.total||0)}問 せいかい`:'さいごまで しんかしたよ！'}</div></div>
     <div class="row" style="gap:8px;flex:none">${Object.entries(THEMES).map(([k,c])=>`<button class="dot ${P.theme===k?'on':''}" style="background:${c}" data-act="theme" data-v="${k}"></button>`).join('')}</div></div>`;
 }
@@ -691,6 +695,7 @@ async function showParent(pid){
   const chips=`<div class="row">${profs.map(p=>`<button class="chip ${p.id===cur.id?'on':''}" data-act="child" data-id="${esc(p.id)}">${esc(p.name||p.email)}</button>`).join('')}</div><p class="note">${esc(cur.email||'')}</p>`;
   render(hdr+chips+`<p>よみこみ中…</p>`);
   let list=[]; try{list=await store.load(cur.id,200)}catch(e){toast('記録を読み込めませんでした')}
+  let pr=null; try{pr=normProg(await store.loadProgress(cur.id))}catch(e){}
   if(tk!==parentTk) return;
   if(!list.length){ render(hdr+chips+'<p>まだ記録がありません。</p>'); return; }
   const t0=new Date(); t0.setHours(0,0,0,0);
@@ -699,6 +704,7 @@ async function showParent(pid){
   const card=(t,x)=>`<div class="card sp"><div class="note" style="margin:0">${t}</div><b style="font-size:22px">${x.c}回・${x.n}問</b><div>正答率 <b>${pct(x.k,x.n)}</b></div></div>`;
   render(hdr+chips+`<div class="split2"><div class="col">
       <div class="row" style="gap:10px">${card('きょう',today)}${card('直近7日',wk)}</div>
+      ${pr?`<div class="card" style="margin-top:10px">🎴 ごほうびカード：のこり <b>${pr.cards.have}</b>まい（もらった ${pr.cards.have+pr.cards.used} ／ つかった ${pr.cards.used}）${pr.streak.n?`　🔥 ${pr.streak.n}日れんぞく`:''}</div>`:''}
       <h2>練習した問題数（14日間）</h2>${dayBars(list)}
       <div style="margin-top:14px">${left}</div>
       <p class="note">最後の練習：${fmtDate(list[0].ts)}</p>
@@ -721,6 +727,11 @@ const acts={
     if(d.k==='op') c.op=d.v;
     else c[d.k]=d.v==='true'?true:d.v==='false'?false:+d.v;
     saveCfg(); showSettings(d.m);
+  },
+  useCard:()=>{
+    if(!PROG.cards.have) return;
+    if(!confirm('ごほうびカードを 1まい つかう？\n（おうちの人に見せてね）')) return;
+    PROG.cards.have--; PROG.cards.used++; saveProg(); toast('カードをつかったよ！おうちの人に見せよう'); fillDaily();
   },
   theme:d=>{ PROG.theme=d.v; applyTheme(); saveProg(); fillDaily(); },
   names:()=>{ showNames=!showNames; showSettings('calc'); },
